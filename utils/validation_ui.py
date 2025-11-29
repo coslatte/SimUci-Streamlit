@@ -403,7 +403,7 @@ def render_validation(
             }
         )
 
-        st.markdown("### Diagnóstico por variable")
+        st.markdown("### Medidas de Tendencia Central")
         st.dataframe(diag_df, use_container_width=True)
     except Exception as e:
         st.write(f"Could not build diagnostics table: {e}")
