@@ -1,0 +1,126 @@
+"""Constants package - re-exports all constants for backward compatibility."""
+
+# Limits
+from .limits import (
+    AGE_MIN,
+    AGE_MAX,
+    AGE_DEFAULT,
+    APACHE_MIN,
+    APACHE_MAX,
+    APACHE_DEFAULT,
+    VAM_T_MIN,
+    VAM_T_MAX,
+    VAM_T_DEFAULT,
+    UTI_STAY_MIN,
+    UTI_STAY_MAX,
+    UTI_STAY_DEFAULT,
+    PREUTI_STAY_MIN,
+    PREUTI_STAY_MAX,
+    PREUTI_STAY_DEFAULT,
+    SIM_RUNS_MIN,
+    SIM_RUNS_MAX,
+    SIM_RUNS_DEFAULT,
+    SIM_PERCENT_MIN,
+    SIM_PERCENT_MAX,
+    SIM_PERCENT_DEFAULT,
+)
+
+# Messages and labels
+from .messages import (
+    HELP_MSG_APACHE,
+    HELP_MSG_UTI_STAY,
+    HELP_MSG_PREUTI_STAY,
+    HELP_MSG_SIM_RUNS,
+    HELP_MSG_SIM_PERCENT,
+    HELP_MSG_PREDICTION_METRIC,
+    HELP_MSG_TIME_FORMAT,
+    INFO_STATISTIC,
+    INFO_P_VALUE,
+    HELP_MSG_VAM_TIME,
+    LABEL_TIME_FORMAT,
+    LABEL_PREDICTION_METRIC,
+)
+
+# Mappings
+from .mappings import (
+    VENTILATION_TYPE,
+    PREUCI_DIAG,
+    RESP_INSUF,
+)
+
+# Experiment variables
+from .experiment import (
+    EXPERIMENT_VARIABLES_FROM_CSV,
+    EXPERIMENT_VARIABLES_LABELS,
+    EXPERIMENT_VARIABLES_LABELS_DATAFRAME,
+)
+
+# Paths
+from .paths import (
+    CSV_DATA_PATH,
+    FICHERODEDATOS_CSV_PATH,
+    DFCENTROIDES_CSV_PATH,
+    PREDICTIONS_CSV_PATH,
+    PREDICTION_MODEL_PATH,
+)
+
+# Theme
+from .theme import (
+    PRIMARY_COLOR,
+    SECUNDARY_BACKGROUND_COLOR,
+)
+
+__all__ = [
+    # Limits
+    "AGE_MIN",
+    "AGE_MAX",
+    "AGE_DEFAULT",
+    "APACHE_MIN",
+    "APACHE_MAX",
+    "APACHE_DEFAULT",
+    "VAM_T_MIN",
+    "VAM_T_MAX",
+    "VAM_T_DEFAULT",
+    "UTI_STAY_MIN",
+    "UTI_STAY_MAX",
+    "UTI_STAY_DEFAULT",
+    "PREUTI_STAY_MIN",
+    "PREUTI_STAY_MAX",
+    "PREUTI_STAY_DEFAULT",
+    "SIM_RUNS_MIN",
+    "SIM_RUNS_MAX",
+    "SIM_RUNS_DEFAULT",
+    "SIM_PERCENT_MIN",
+    "SIM_PERCENT_MAX",
+    "SIM_PERCENT_DEFAULT",
+    # Messages
+    "HELP_MSG_APACHE",
+    "HELP_MSG_UTI_STAY",
+    "HELP_MSG_PREUTI_STAY",
+    "HELP_MSG_SIM_RUNS",
+    "HELP_MSG_SIM_PERCENT",
+    "HELP_MSG_PREDICTION_METRIC",
+    "HELP_MSG_TIME_FORMAT",
+    "INFO_STATISTIC",
+    "INFO_P_VALUE",
+    "HELP_MSG_VAM_TIME",
+    "LABEL_TIME_FORMAT",
+    "LABEL_PREDICTION_METRIC",
+    # Mappings
+    "VENTILATION_TYPE",
+    "PREUCI_DIAG",
+    "RESP_INSUF",
+    # Experiment
+    "EXPERIMENT_VARIABLES_FROM_CSV",
+    "EXPERIMENT_VARIABLES_LABELS",
+    "EXPERIMENT_VARIABLES_LABELS_DATAFRAME",
+    # Paths
+    "CSV_DATA_PATH",
+    "FICHERODEDATOS_CSV_PATH",
+    "DFCENTROIDES_CSV_PATH",
+    "PREDICTIONS_CSV_PATH",
+    "PREDICTION_MODEL_PATH",
+    # Theme
+    "PRIMARY_COLOR",
+    "SECUNDARY_BACKGROUND_COLOR",
+]

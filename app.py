@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from pandas import DataFrame
@@ -318,19 +319,19 @@ with simulation_tab:
         # Collected patient data (these are the input values to be processed).
         age: int = age_input
         apache: int = apache_input
-        diag_ing1: int = key_categ("diag", diag_ing1_input)
-        diag_ing2: int = key_categ("diag", diag_ing2_input)
-        diag_ing3: int = key_categ("diag", diag_ing3_input)
-        diag_ing4: int = key_categ("diag", diag_ing4_input)
+        diag_ing1: int = int(key_categ("diag", diag_ing1_input))
+        diag_ing2: int = int(key_categ("diag", diag_ing2_input))
+        diag_ing3: int = int(key_categ("diag", diag_ing3_input))
+        diag_ing4: int = int(key_categ("diag", diag_ing4_input))
         # diag_egreso1: int = key_categ("diag", opcion_diag_egreso1)
-        diag_egreso2: int = key_categ("diag", diag_egreso2_input)
+        diag_egreso2: int = int(key_categ("diag", diag_egreso2_input))
         # diag_egreso3: int = key_categ("diag", opcion_diag_egreso3)
         # diag_egreso4: int = key_categ("diag", opcion_diag_egreso4)
-        vent_type: int = key_categ("vt", vent_type_option)
+        vent_type: int = int(key_categ("vt", vent_type_option))
         vam_time: int = vam_time_option
         uti_stay: int = estad_uti_option
         preuti_stay: int = preuti_stay_option
-        resp_insuf: int = key_categ("insuf", resp_insuf_option)
+        resp_insuf: int = int(key_categ("insuf", resp_insuf_option))
 
     st.divider()
 
@@ -419,12 +420,12 @@ with simulation_tab:
                     change = current_pred - prev_val
                     percent_change = change * 100
 
-                    how_chaged: str
+                    how_chaged: str = ""
 
                     if change > 0:
                         how_chaged = "Incremento"
                         delta_color = "inverse"  # Green up arrow
-                    if change < 0:
+                    elif change < 0:
                         how_chaged = "Disminución"
                         delta_color = "normal"  # Red down arrow
 
@@ -556,8 +557,8 @@ with simulation_tab:
                 st.session_state.df_result = experiment_result
 
                 st.rerun()
-            except Exception as data:
-                st.exception(f"No se pudo ejecutar la simulación. Error asociado: \n{data}")
+            except Exception as e:
+                st.error(f"No se pudo ejecutar la simulación. Error asociado: \n{e}")
 
 ###############################
 # SIMULATION WITH REAL DATA #
@@ -579,14 +580,15 @@ with real_data_tab:
         html_text = f'<p style="color:{PRIMARY_COLOR};">Puede seleccionar una fila para realizar una simulación al paciente seleccionado.</p>'
         st.markdown(html_text, unsafe_allow_html=True)
 
-        df_selection = st.dataframe(
+        _df_state = st.dataframe(
             df_true_data,
             key="data",
             on_select="rerun",
             selection_mode=["single-row"],
             hide_index=False,
             height=300,
-        )["selection"]["rows"]
+        )
+        df_selection = _df_state.get("selection", {}).get("rows", [])
 
         # SELECTION INFORMATION: df_selection is a dict containing selected rows and columns
 
@@ -620,12 +622,12 @@ with real_data_tab:
         if current_selection is not None or current_selection == 0:
             if (st.session_state.prev_selection != current_selection) or rerun_sim_btn:
                 # Run simulation for the selected row
-                data = simulate_true_data(csv_path=FICHERODEDATOS_CSV_PATH, selection=current_selection)
+                data = simulate_true_data(csv_path=str(FICHERODEDATOS_CSV_PATH), selection=current_selection)
 
                 # Prepare patient data for prediction
                 st.session_state.patient_data = prepare_patient_data_for_prediction(
                     extract_true_data_from_csv(
-                        csv_path=FICHERODEDATOS_CSV_PATH,
+                        csv_path=str(FICHERODEDATOS_CSV_PATH),
                         index=current_selection,
                         as_dataframe=False,
                     )
@@ -674,6 +676,8 @@ with real_data_tab:
 
             # Prediction metric
             try:
+                if st.session_state.patient_data is None:
+                    raise ValueError("Patient data not available for prediction")
                 prediction_df = get_data_for_prediction(data=st.session_state.patient_data)
                 preds, preds_proba = predict(prediction_df)
 
@@ -779,7 +783,7 @@ with real_data_tab:
 
                 # Build metrics object and evaluate
                 sim_metrics = SimulationMetrics(
-                    true_data=(df_true.to_numpy() if hasattr(df_true, "to_numpy") else df_true),
+                    true_data=df_true.to_numpy() if hasattr(df_true, "to_numpy") else np.array(df_true),
                     simulation_data=sim_arr,
                 )
                 sim_metrics.evaluate(
@@ -790,7 +794,9 @@ with real_data_tab:
 
                 # Build plots and bytes
                 figs = make_all_plots(sim_metrics, df_true, sim_arr)
-                figs_bytes = {k: (fig_to_bytes(v) if v is not None else None) for k, v in figs.items()}
+                figs_bytes: dict[str, bytes] = {
+                    k: fig_to_bytes(v) for k, v in figs.items() if v is not None
+                }
 
                 # Save to session state so rerenders don't recompute
                 from datetime import timezone
@@ -815,7 +821,7 @@ with real_data_tab:
                     figs_bytes=figs_bytes,
                 )
             except Exception as e:
-                st.exception(f"Error ejecutando la validación: {e}")
+                st.error(f"Error ejecutando la validación: {e}")
 
 
 #################
@@ -827,10 +833,10 @@ with comparisons_tab:
     with wilcoxon_tab:
         st.markdown("### Wilcoxon")
 
-        file_upl1: UploadedFile
-        file_upl2: UploadedFile
-        df_experiment1 = pd.DataFrame()
-        df_experiment2 = pd.DataFrame()
+        file_upl1: UploadedFile | None = None
+        file_upl2: UploadedFile | None = None
+        df_experiment1: DataFrame = pd.DataFrame()
+        df_experiment2: DataFrame = pd.DataFrame()
 
         with st.container():
             col1, col2 = st.columns(2)
@@ -841,7 +847,8 @@ with comparisons_tab:
 
             with st.expander("Previsualización", expanded=False):
                 if file_upl1:
-                    df_experiment1 = bin_to_df(file_upl1)
+                    _df1 = bin_to_df(file_upl1)
+                    df_experiment1 = _df1 if isinstance(_df1, DataFrame) else pd.DataFrame()
                     if not df_experiment1.empty:
                         st.dataframe(
                             df_experiment1,
@@ -850,7 +857,8 @@ with comparisons_tab:
                             # Show a small metadata line so the user knows this is cached
                         )
                 if file_upl2:
-                    df_experiment2 = bin_to_df(file_upl2)
+                    _df2 = bin_to_df(file_upl2)
+                    df_experiment2 = _df2 if isinstance(_df2, DataFrame) else pd.DataFrame()
                     if not df_experiment2.empty:
                         st.dataframe(
                             df_experiment2,
@@ -878,8 +886,8 @@ with comparisons_tab:
                         "No se puede realizar la comparación: se detectaron datos de experimento vacíos o faltantes."
                     )
                 else:
-                    experiment1: DataFrame = df_experiment1[col_comparison_selectbox]
-                    experiment2: DataFrame = df_experiment2[col_comparison_selectbox]
+                    experiment1 = df_experiment1[col_comparison_selectbox]
+                    experiment2 = df_experiment2[col_comparison_selectbox]
                     if experiment1.equals(experiment2):
                         st.error(
                             'Imposible realizar prueba de Wilcoxon cuando la diferencia entre los elementos de "x" y "y" es cero para todos los elementos. Verifique que no cargó el mismo experimento dos veces.'
@@ -904,7 +912,9 @@ with comparisons_tab:
 
                         try:
                             # Wilcoxon test
-                            wilcoxon_test = Wilcoxon(x=experiment1, y=experiment2)
+                            wilcoxon_test = Wilcoxon(
+                                x=experiment1.to_numpy(), y=experiment2.to_numpy()
+                            )
                             wilcoxon_test.test()
                             st.session_state.wilcoxon_test = wilcoxon_test
 
@@ -921,13 +931,15 @@ with comparisons_tab:
     with friedman_tab:
         st.markdown("### Friedman")
 
-        experiments_file_upl: list[UploadedFile]
-        experiment_dataframes: list[DataFrame]
+        experiments_file_upl: list[UploadedFile] | None = None
+        experiment_dataframes: list[DataFrame] = []
 
         # File Uploader.
         with st.container():
             experiments_file_upl = st.file_uploader(label="Experimentos", type=[".csv"], accept_multiple_files=True)
-            experiment_dataframes = bin_to_df(experiments_file_upl)
+            if experiments_file_upl:
+                _dfs = bin_to_df(experiments_file_upl)
+                experiment_dataframes = _dfs if isinstance(_dfs, list) else [_dfs]
 
         col_comparison_selectbox = st.selectbox(
             "Seleccione una columna para comparar",
@@ -949,7 +961,7 @@ with comparisons_tab:
                     st.warning("Debe cargar más de 3 muestras para realizar esta prueba.")
                 else:
                     adjusted_sample_tuple = adjust_df_sizes(
-                        [df[col_comparison_selectbox] for df in experiment_dataframes]
+                        [df[[col_comparison_selectbox]] for df in experiment_dataframes]
                     )
 
                     samples_selection = adjusted_sample_tuple[0]
@@ -975,7 +987,10 @@ with comparisons_tab:
 
                         try:
                             # Friedman test.
-                            friedman_test = Friedman(samples=samples_selection)
+                            friedman_samples = [
+                                df.iloc[:, 0].to_numpy().tolist() for df in samples_selection
+                            ]
+                            friedman_test = Friedman(samples=friedman_samples)
                             friedman_test.test()
                             st.session_state.friedman_test_result = friedman_test
 

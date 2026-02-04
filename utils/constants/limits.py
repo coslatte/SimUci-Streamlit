@@ -1,0 +1,36 @@
+"""Numeric limits and defaults for input fields."""
+
+# Age
+AGE_MIN = 14
+AGE_MAX = 100
+AGE_DEFAULT = 22
+
+# Apache
+APACHE_MIN = 0  # Exceptionally.
+APACHE_MAX = 36
+APACHE_DEFAULT = 12
+
+# VAM Time
+VAM_T_MIN = 24
+VAM_T_MAX = 700
+VAM_T_DEFAULT = VAM_T_MIN
+
+# UTI Stay
+UTI_STAY_MIN = 0
+UTI_STAY_MAX = 200
+UTI_STAY_DEFAULT = 24
+
+# Pre-UTI stay -> hours
+PREUTI_STAY_MIN = 0
+PREUTI_STAY_MAX = 34
+PREUTI_STAY_DEFAULT = 10
+
+# Simulation runs
+SIM_RUNS_MIN = 50
+SIM_RUNS_MAX = 100_000
+SIM_RUNS_DEFAULT = 200
+
+# Percentage
+SIM_PERCENT_MIN = 0
+SIM_PERCENT_MAX = 10
+SIM_PERCENT_DEFAULT = 3
