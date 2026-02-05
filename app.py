@@ -8,48 +8,59 @@ from pandas import DataFrame
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from uci.stats import Friedman, SimulationMetrics, Wilcoxon
-from utils.constants import (
-    AGE_DEFAULT,
-    AGE_MAX,
+
+from utils.constants.limits import (
     AGE_MIN,
-    APACHE_DEFAULT,
-    APACHE_MAX,
+    AGE_MAX,
+    AGE_DEFAULT,
     APACHE_MIN,
-)
-from utils.constants import EXPERIMENT_VARIABLES_LABELS as EXP_VARIABLES
-from utils.constants import (
-    FICHERODEDATOS_CSV_PATH,
-    HELP_MSG_APACHE,
-    HELP_MSG_PREDICTION_METRIC,
-    HELP_MSG_PREUTI_STAY,
-    HELP_MSG_SIM_PERCENT,
-    HELP_MSG_SIM_RUNS,
-    HELP_MSG_TIME_FORMAT,
-    HELP_MSG_UTI_STAY,
-    HELP_MSG_VAM_TIME,
-    INFO_P_VALUE,
-    INFO_STATISTIC,
-    LABEL_PREDICTION_METRIC,
-    LABEL_TIME_FORMAT,
-    PREUCI_DIAG,
-    PREUTI_STAY_DEFAULT,
-    PREUTI_STAY_MAX,
-    PREUTI_STAY_MIN,
-    PRIMARY_COLOR,
-    RESP_INSUF,
-    SIM_PERCENT_DEFAULT,
-    SIM_PERCENT_MAX,
-    SIM_PERCENT_MIN,
-    SIM_RUNS_DEFAULT,
-    SIM_RUNS_MAX,
-    SIM_RUNS_MIN,
-    UTI_STAY_DEFAULT,
-    UTI_STAY_MAX,
-    UTI_STAY_MIN,
-    VAM_T_DEFAULT,
-    VAM_T_MAX,
+    APACHE_MAX,
+    APACHE_DEFAULT,
     VAM_T_MIN,
+    VAM_T_MAX,
+    VAM_T_DEFAULT,
+    UTI_STAY_MIN,
+    UTI_STAY_MAX,
+    UTI_STAY_DEFAULT,
+    PREUTI_STAY_MIN,
+    PREUTI_STAY_MAX,
+    PREUTI_STAY_DEFAULT,
+    SIM_RUNS_MIN,
+    SIM_RUNS_MAX,
+    SIM_RUNS_DEFAULT,
+    SIM_PERCENT_MIN,
+    SIM_PERCENT_MAX,
+    SIM_PERCENT_DEFAULT,
+)
+from utils.constants.messages import (
+    HELP_MSG_APACHE,
+    HELP_MSG_UTI_STAY,
+    HELP_MSG_PREUTI_STAY,
+    HELP_MSG_SIM_RUNS,
+    HELP_MSG_SIM_PERCENT,
+    HELP_MSG_PREDICTION_METRIC,
+    HELP_MSG_TIME_FORMAT,
+    INFO_STATISTIC,
+    INFO_P_VALUE,
+    HELP_MSG_VAM_TIME,
+    LABEL_TIME_FORMAT,
+    LABEL_PREDICTION_METRIC,
+)
+from utils.constants.mappings import (
     VENTILATION_TYPE,
+    PREUCI_DIAG,
+    RESP_INSUF,
+)
+from utils.constants.experiment import (
+    EXPERIMENT_VARIABLES_LABELS as EXP_VARIABLES,
+)
+from utils.constants.paths import (
+    FICHERODEDATOS_CSV_PATH,
+    APP_INFO_ES_PATH,
+    APP_INFO_EN_PATH,
+)
+from utils.constants.theme import (
+    get_current_theme_colors,
 )
 from utils.helpers import (
     adjust_df_sizes,
@@ -67,57 +78,52 @@ from utils.helpers import (
     predict,
     prepare_patient_data_for_prediction,
     run_experiment,
-    simulate_all_true_data,
+    set_theme,
     simulate_true_data,
+    simulate_all_true_data,
     value_is_zero,
 )
 from utils.validation_ui import render_validation
 from utils.visuals import fig_to_bytes, make_all_plots
 
-# Initial page configuration
-st.set_page_config(page_title="SimUci", page_icon="🏥", layout="wide", initial_sidebar_state="expanded")
+# INITIAL PAGE CONFIGURATION
+st.set_page_config(
+    page_title="SimUci", page_icon="🏥", layout="wide", initial_sidebar_state="expanded"
+)
 
-if "theme" not in st.session_state:
-    st.session_state.theme = "light"
+# THEME PREFERENCE INITIALIZATION
+if 'theme_preference' not in st.session_state:
+    config_path = ".streamlit/config.toml"
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if 'base = "light"' in content:
+            st.session_state.theme_preference = "light"
+        elif 'base = "dark"' in content:
+            st.session_state.theme_preference = "dark"
+        else:
+            st.session_state.theme_preference = "light"
+    except Exception as e:
+        st.session_state.theme_preference = "light"
+        print(f"Could not read theme from config.toml: {e}")
+
+apply_theme(st.session_state.theme_preference)
+
+# SESSION STATE INITIALIZATION
 if "global_sim_seed" not in st.session_state:
     st.session_state.global_sim_seed = 0
-
-apply_theme(st.session_state.theme)
 
 with st.sidebar:
     #
     # TITLE
     #
-    st.header(body="SimUci", anchor=False, width="stretch", divider="gray")
-
-    #
-    # APP INFORMATION
-    #
-    st.subheader("Sobre la App")
-    st.markdown(
-        "Esta aplicación permite:\n"
-        "- Simular pacientes UCI\n"
-        "- Analizar datos reales\n"
-        "- Realizar predicciones\n"
-        "- Comparar resultados estadísticos\n"
-    )
-
-    st.divider()
+    with st.container():
+        st.title(body="SimUci", anchor=False, width="stretch")
+        st.caption("Versión 1.1 - Febrero 2026")
 
     #
     # GLOBAL SEED CONFIG
     #
-    st.subheader("Semilla Global de Simulación")
-    with st.expander(label="Explicación", expanded=False):
-        st.caption(
-            body=(
-                "Valor global de la semilla aleatoria utilizada para realizar las simulaciones. "
-                "Es el punto de partida del generador de números aleatorios. "
-                "Este valor garantiza que las simulaciones puedan replicarse exactamente, "
-                "obteniendo los mismos resultados en cada ejecución"
-            ),
-            width="stretch",
-        )
     st.session_state.global_sim_seed = st.number_input(
         label="Semilla",
         min_value=0,
@@ -128,6 +134,14 @@ with st.sidebar:
     toggle_global_seed = st.toggle(label="Fijar semilla", value=False, width="stretch")
     if toggle_global_seed:
         fix_seed(st.session_state.global_sim_seed)
+    with st.expander(label="Información Semilla Global", expanded=False):
+        st.caption(
+            body=(
+            "El valor global de la semilla aleatoria es el punto de partida del generador de números aleatorios utilizado en las simulaciones. "
+            "Este valor garantiza que las simulaciones puedan replicarse exactamente, obteniendo los mismos resultados en cada ejecución."
+            ),
+            width="stretch",
+        )
 
     st.divider()
 
@@ -135,28 +149,24 @@ with st.sidebar:
     # THEME CONFIG
     #
     st.subheader("Tema")
+
+    current_theme_is_dark = st.session_state.get("theme_preference", "light") == "dark"
     theme_toggle = st.toggle(
         label="Modo Oscuro",
+        value=current_theme_is_dark,
     )
     new_theme = "dark" if theme_toggle else "light"
-    if new_theme != st.session_state.theme:
-        st.session_state.theme = new_theme
-        apply_theme(new_theme)
-        st.rerun()
+    if new_theme != st.session_state.get("theme_preference", "light"):
+        set_theme(new_theme)
 
     st.divider()
 
-    #
-    # VERSION INFO
-    #
-    st.header("Versión")
-    st.caption("Beta 0.2 - Septiembre 2025")
 
 ########
 # TABS #
 ########
-simulation_tab, real_data_tab, comparisons_tab = st.tabs(
-    tabs=("Simulación", "Validaciones", "Comparaciones"), width="stretch"
+simulation_tab, real_data_tab, comparisons_tab, info_tab = st.tabs(
+    tabs=("Simulación", "Validaciones", "Comparaciones", "Información"), width="stretch"
 )
 
 # DataFrame storing simulation results from a single patient
@@ -190,7 +200,9 @@ with simulation_tab:
     if "simulation_seed" not in st.session_state:
         st.session_state.simulation_seed = 0
 
-    pac_col1, pac_col2 = st.columns(spec=2, gap="small", border=False, vertical_alignment="bottom")
+    pac_col1, pac_col2 = st.columns(
+        spec=2, gap="small", border=False, vertical_alignment="bottom"
+    )
     with pac_col1:
         st.header("Paciente")
     with pac_col2:
@@ -208,130 +220,117 @@ with simulation_tab:
                 label_visibility="collapsed",
             )
 
-    col1_paciente, col2_paciente = st.columns(spec=2, border=False, gap="small")
-    with col1_paciente:
-        col1a_paciente, col1b_paciente, col1c_paciente = st.columns(spec=3, gap="small", border=False)
-        with col1a_paciente:
-            age_input: int = st.number_input(label="Edad", min_value=AGE_MIN, max_value=AGE_MAX, value=AGE_DEFAULT)
-            preuti_stay_option: int = st.number_input(
-                label="Tiempo Pre-UCI",
-                min_value=PREUTI_STAY_MIN,
-                max_value=PREUTI_STAY_MAX,
-                value=PREUTI_STAY_DEFAULT,
-                help=HELP_MSG_PREUTI_STAY,
-            )
-        with col1b_paciente:
-            vam_time_option: int = st.number_input(
-                label="Tiempo VA",
-                min_value=VAM_T_MIN,
-                max_value=VAM_T_MAX,
-                value=VAM_T_DEFAULT,
-                help=HELP_MSG_VAM_TIME,
-            )
-            percent_input = st.number_input(
-                label="Porciento Tiempo UCI",
-                min_value=SIM_PERCENT_MIN,
-                max_value=SIM_PERCENT_MAX,
-                value=SIM_PERCENT_DEFAULT,
-                help=HELP_MSG_SIM_PERCENT,
-            )
-        with col1c_paciente:
-            apache_input: int = st.number_input(
-                label="Apache",
-                min_value=APACHE_MIN,
-                max_value=APACHE_MAX,
-                value=APACHE_DEFAULT,
-                help=HELP_MSG_APACHE,
-            )
-            estad_uti_option: int = st.number_input(
-                label="Tiempo UCI",
-                min_value=UTI_STAY_MIN,
-                max_value=UTI_STAY_MAX,
-                value=UTI_STAY_DEFAULT,
-                help=HELP_MSG_UTI_STAY,
-            )
+    with st.container(border=True):
+        with st.container(border=False):
+            row1 = st.columns(spec=6)
+            with row1[0]:
+                age_input: int = st.number_input(
+                    label="Edad", min_value=AGE_MIN, max_value=AGE_MAX, value=AGE_DEFAULT
+                )
+            with row1[1]:
+                percent_input = st.number_input(
+                    label="Porciento Tiempo UCI",
+                    min_value=SIM_PERCENT_MIN,
+                    max_value=SIM_PERCENT_MAX,
+                    value=SIM_PERCENT_DEFAULT,
+                    help=HELP_MSG_SIM_PERCENT,
+                )
+            with row1[2]:
+                apache_input: int = st.number_input(
+                    label="Apache",
+                    min_value=APACHE_MIN,
+                    max_value=APACHE_MAX,
+                    value=APACHE_DEFAULT,
+                    help=HELP_MSG_APACHE,
+                )
+            with row1[3]:
+                preuti_stay_input: int = st.number_input(
+                    label="Tiempo Pre-UCI",
+                    min_value=PREUTI_STAY_MIN,
+                    max_value=PREUTI_STAY_MAX,
+                    value=PREUTI_STAY_DEFAULT,
+                    help=HELP_MSG_PREUTI_STAY,
+                )
+            with row1[4]:
+                vam_time_input: int = st.number_input(
+                    label="Tiempo VA",
+                    min_value=VAM_T_MIN,
+                    max_value=VAM_T_MAX,
+                    value=VAM_T_DEFAULT,
+                    help=HELP_MSG_VAM_TIME,
+                )
+            with row1[5]:
+                estad_uti_input: int = st.number_input(
+                    label="Tiempo UCI",
+                    min_value=UTI_STAY_MIN,
+                    max_value=UTI_STAY_MAX,
+                    value=UTI_STAY_DEFAULT,
+                    help=HELP_MSG_UTI_STAY,
+                )
 
-        col1x_pacient, col1y_pacient = st.columns(spec=2, gap="small", border=False)
-        with col1x_pacient:
-            resp_insuf_option: str = st.selectbox(
-                label="Tipo de Insuficiencia Respiratoria",
-                options=tuple(RESP_INSUF.values()),
-                index=1,
-            )
-        with col1y_pacient:
-            vent_type_option: str = st.selectbox(
-                label="Tipo de Ventilación Artificial",
-                options=tuple(VENTILATION_TYPE.values()),
-            )
-    with col2_paciente:
-        subcol1, subcol2 = st.columns(2)
-        with subcol1:
-            diag_ing1_input: str = st.selectbox(
-                label="Diagnóstico Ing. 1",
-                options=tuple(PREUCI_DIAG.values()),
-                index=0,
-                key="diag-ing-1",
-            )
-            diag_ing3_input: str = st.selectbox(
-                label="Diagnóstico Ing. 3",
-                options=tuple(PREUCI_DIAG.values()),
-                index=0,
-                key="diag-ing-3",
-            )
-        with subcol2:
-            diag_ing2_input: str = st.selectbox(
-                label="Diagnóstico Ing. 2",
-                options=tuple(PREUCI_DIAG.values()),
-                index=0,
-                key="diag-ing-2",
-            )
-            diag_ing4_input: str = st.selectbox(
-                label="Diagnóstico Ing. 4",
-                options=tuple(PREUCI_DIAG.values()),
-                index=0,
-                key="diag-ing-4",
-            )
-        # opcion_diag_egreso1: str = st.selectbox(
-        #     label="Diagnóstico 1",
-        #     options=tuple(DIAG_PREUCI.values()),
-        #     index=0,
-        #     key="diag-egreso-1",
-        # )
-        diag_egreso2_input: str = st.selectbox(
-            label="Diagnóstico Egreso 2",
-            options=tuple(PREUCI_DIAG.values()),
-            index=0,
-            key="diag-egreso-2",
-        )
-        # opcion_diag_egreso3: str = st.selectbox(
-        #     label="Diagnóstico 3",
-        #     options=tuple(DIAG_PREUCI.values()),
-        #     index=0,
-        #     key="diag-egreso-3",
-        # )
-        # opcion_diag_egreso4: str = st.selectbox(
-        #     label="Diagnóstico 4",
-        #     options=tuple(DIAG_PREUCI.values()),
-        #     index=0,
-        #     key="diag-egreso-4",
-        # )
+        with st.container(border=False):
+            row2 = st.columns(spec=6)
+            with row2[0]:
+                diag_ing1_option: str = st.selectbox(
+                    label="Diagnóstico Ing. 1",
+                    options=tuple(PREUCI_DIAG.values()),
+                    index=0,
+                    key="diag-ing-1",
+                )
+            with row2[1]:
+                diag_ing2_option: str = st.selectbox(
+                    label="Diagnóstico Ing. 2",
+                    options=tuple(PREUCI_DIAG.values()),
+                    index=0,
+                    key="diag-ing-2",
+                )
+            with row2[2]:
+                diag_ing3_option: str = st.selectbox(
+                    label="Diagnóstico Ing. 3",
+                    options=tuple(PREUCI_DIAG.values()),
+                    index=0,
+                    key="diag-ing-3",
+                )
+            with row2[3]:
+                diag_ing4_option: str = st.selectbox(
+                    label="Diagnóstico Ing. 4",
+                    options=tuple(PREUCI_DIAG.values()),
+                    index=0,
+                    key="diag-ing-4",
+                )
+            with row2[4]:
+                # Additional selectboxes
+                resp_insuf_option: str = st.selectbox(
+                    label="Tipo de Insuficiencia Respiratoria",
+                    options=tuple(RESP_INSUF.values()),
+                    index=1,
+                )
+            with row2[5]:
+                vent_type_option: str = st.selectbox(
+                    label="Tipo de Ventilación Artificial",
+                    options=tuple(VENTILATION_TYPE.values()),
+                )
 
-        # Collected patient data (these are the input values to be processed).
-        age: int = age_input
-        apache: int = apache_input
-        diag_ing1: int = int(key_categ("diag", diag_ing1_input))
-        diag_ing2: int = int(key_categ("diag", diag_ing2_input))
-        diag_ing3: int = int(key_categ("diag", diag_ing3_input))
-        diag_ing4: int = int(key_categ("diag", diag_ing4_input))
-        # diag_egreso1: int = key_categ("diag", opcion_diag_egreso1)
-        diag_egreso2: int = int(key_categ("diag", diag_egreso2_input))
-        # diag_egreso3: int = key_categ("diag", opcion_diag_egreso3)
-        # diag_egreso4: int = key_categ("diag", opcion_diag_egreso4)
-        vent_type: int = int(key_categ("vt", vent_type_option))
-        vam_time: int = vam_time_option
-        uti_stay: int = estad_uti_option
-        preuti_stay: int = preuti_stay_option
-        resp_insuf: int = int(key_categ("insuf", resp_insuf_option))
+    diag_egreso2_option: str = st.selectbox(
+        label="Diagnóstico Egreso 2",
+        options=tuple(PREUCI_DIAG.values()),
+        index=0,
+        key="diag-egreso-2",
+    )
+
+    # Collected patient data (these are the input values to be processed).
+    age: int = age_input
+    apache: int = apache_input
+    diag_ing1: int = int(key_categ("diag", diag_ing1_option))
+    diag_ing2: int = int(key_categ("diag", diag_ing2_option))
+    diag_ing3: int = int(key_categ("diag", diag_ing3_option))
+    diag_ing4: int = int(key_categ("diag", diag_ing4_option))
+    diag_egreso2: int = int(key_categ("diag", diag_egreso2_option))
+    vent_type: int = int(key_categ("vt", vent_type_option))
+    vam_time: int = vam_time_input
+    uti_stay: int = estad_uti_input
+    preuti_stay: int = preuti_stay_input
+    resp_insuf: int = int(key_categ("insuf", resp_insuf_option))
 
     st.divider()
 
@@ -358,7 +357,9 @@ with simulation_tab:
             value=SIM_RUNS_DEFAULT,
             help=HELP_MSG_SIM_RUNS,
         )
-        boton_comenzar_simulacion = st.button("Realizar Simulación", type="primary", use_container_width=True)
+        boton_comenzar_simulacion = st.button(
+            "Realizar Simulación", type="primary", use_container_width=True
+        )
 
     if boton_comenzar_simulacion:
         try:
@@ -392,7 +393,9 @@ with simulation_tab:
         )
 
         if toggle_format:
-            display_df = format_time_columns(df_simulacion, exclude_rows=["Métrica de Calibración"])
+            display_df = format_time_columns(
+                df_simulacion, exclude_rows=["Métrica de Calibración"]
+            )
         else:
             display_df = df_simulacion
 
@@ -403,7 +406,10 @@ with simulation_tab:
         )
 
         # METRIC PREVIEW
-        if "prediction_classes" in st.session_state and "prediction_percentage" in st.session_state:
+        if (
+            "prediction_classes" in st.session_state
+            and "prediction_percentage" in st.session_state
+        ):
             prev_pred = st.session_state.get("prev_prediction_percentage", None)
 
             current_pred = float(st.session_state.prediction_percentage)
@@ -447,7 +453,9 @@ with simulation_tab:
                 delta_color = "normal"
 
             # Binary classification variable (0, 1) <-> (False, True)
-            paciente_vive: bool = True if st.session_state.prediction_classes == 0 else False
+            paciente_vive: bool = (
+                True if st.session_state.prediction_classes == 0 else False
+            )
             metric_display_value: str = (
                 f"{'Paciente no fallece' if paciente_vive else 'Paciente fallece'} "
                 f"(predicción de {(current_pred * 100):.0f}%)"
@@ -478,7 +486,9 @@ with simulation_tab:
 
     if boton_comenzar_simulacion:
         # Field validation before running simulation.
-        if not value_is_zero([diag_ing1, diag_ing2, diag_ing3, diag_ing4]):  # diagnostic fields OK?
+        if not value_is_zero(
+            [diag_ing1, diag_ing2, diag_ing3, diag_ing4]
+        ):  # diagnostic fields OK?
             diag_ok = True
         else:
             st.warning(
@@ -537,15 +547,19 @@ with simulation_tab:
                         st.session_state.prediction_classes = prediction[0][0]
                         st.session_state.prediction_percentage = prediction[1][0]
                     else:
-                        raise ValueError("No se pudo realizar el cálculo de predicción de clase y probabilidad.")
+                        raise ValueError(
+                            "No se pudo realizar el cálculo de predicción de clase y probabilidad."
+                        )
 
                 except Exception as e:
-                    st.error(f"Could not perform class prediction and probability calculation. Error: {e}")
+                    st.error(
+                        f"Could not perform class prediction and probability calculation. Error: {e}"
+                    )
 
                 #
                 # Save results (local project storage).
                 #
-                path_base = f"experiments\\paciente-id-{st.session_state.patient_id}"
+                path_base = f"docs\\experiments\\paciente-id-{st.session_state.patient_id}"
                 if not os.path.exists(path_base):
                     os.makedirs(path_base)
                 fecha: str = datetime.now().strftime("%d-%m-%Y")
@@ -575,9 +589,13 @@ with real_data_tab:
     df_true_data.index.name = "Paciente"
 
     with one_patient_data_validation_tab:
-        st.header("Validación con Datos Reales")
+        st.header("Validación con datos reales")
 
-        html_text = f'<p style="color:{PRIMARY_COLOR};">Puede seleccionar una fila para realizar una simulación al paciente seleccionado.</p>'
+        # Get current theme colors for dynamic styling
+        current_colors = get_current_theme_colors()
+        primary_color = current_colors.get("primaryColor", "#66C5A0")
+
+        html_text = f'<p style="color:{primary_color};">Puede seleccionar una fila para realizar una simulación al paciente seleccionado.</p>'
         st.markdown(html_text, unsafe_allow_html=True)
 
         _df_state = st.dataframe(
@@ -622,7 +640,9 @@ with real_data_tab:
         if current_selection is not None or current_selection == 0:
             if (st.session_state.prev_selection != current_selection) or rerun_sim_btn:
                 # Run simulation for the selected row
-                data = simulate_true_data(csv_path=str(FICHERODEDATOS_CSV_PATH), selection=current_selection)
+                data = simulate_true_data(
+                    csv_path=str(FICHERODEDATOS_CSV_PATH), selection=current_selection
+                )
 
                 # Prepare patient data for prediction
                 st.session_state.patient_data = prepare_patient_data_for_prediction(
@@ -650,7 +670,13 @@ with real_data_tab:
             st.session_state.prev_selection = current_selection
 
         # If simulation & prediction results are available, render them
-        if not (st.session_state.df_sim_real_data.empty and st.session_state.patient_data is None) or rerun_sim_btn:
+        if (
+            not (
+                st.session_state.df_sim_real_data.empty
+                and st.session_state.patient_data is None
+            )
+            or rerun_sim_btn
+        ):
             toggle_format = st.toggle(
                 label=LABEL_TIME_FORMAT,
                 help=HELP_MSG_TIME_FORMAT,
@@ -678,7 +704,9 @@ with real_data_tab:
             try:
                 if st.session_state.patient_data is None:
                     raise ValueError("Patient data not available for prediction")
-                prediction_df = get_data_for_prediction(data=st.session_state.patient_data)
+                prediction_df = get_data_for_prediction(
+                    data=st.session_state.patient_data
+                )
                 preds, preds_proba = predict(prediction_df)
 
                 if "prediction_real_data_classes" not in st.session_state:
@@ -695,9 +723,7 @@ with real_data_tab:
                 delta_color = "normal"
 
                 paciente_vive = st.session_state.prediction_real_data_classes == 0
-                metric_display_value = (
-                    f"{'Paciente no fallece' if paciente_vive else 'Paciente fallece'} ({(current_pred * 100):.0f}%)"
-                )
+                metric_display_value = f"{'Paciente no fallece' if paciente_vive else 'Paciente fallece'} ({(current_pred * 100):.0f}%)"
 
                 st.metric(
                     label=LABEL_PREDICTION_METRIC,
@@ -715,7 +741,7 @@ with real_data_tab:
                 st.warning(f"No se pudo completar la predicción: {e}")
     with sim_model_validation_tab:
         # Validation panel (full-dataset validation is a work in progress)
-        st.subheader(body="Métricas del Modelo de Simulación")
+        st.subheader(body="Métricas del modelo de simulación")
 
         n_runs_input = st.number_input(
             label="Corridas por paciente",
@@ -743,7 +769,11 @@ with real_data_tab:
                 try:
                     ts = val.get("timestamp") or "-"
                     n_runs_cached = val.get("n_runs") or "-"
-                    seed_cached = val.get("seed") if val.get("seed") is not None else st.session_state.global_sim_seed
+                    seed_cached = (
+                        val.get("seed")
+                        if val.get("seed") is not None
+                        else st.session_state.global_sim_seed
+                    )
                     st.caption(
                         f"Resultados en caché · guardado: {ts} · corridas: {n_runs_cached} · semilla: {seed_cached}"
                     )
@@ -772,7 +802,9 @@ with real_data_tab:
         if run_validation_btn:
             try:
                 # Load the true data and run the simulation for all patients
-                df_true = get_true_data_for_validation(seed=st.session_state.global_sim_seed)
+                df_true = get_true_data_for_validation(
+                    seed=st.session_state.global_sim_seed
+                )
                 sim_arr = simulate_all_true_data(
                     true_data=df_true,
                     n_runs=n_runs_input,
@@ -781,9 +813,17 @@ with real_data_tab:
                     progress_label="Simulando muestras...",
                 )
 
+                # Ensure sim_arr is an ndarray (not a debug dict)
+                if isinstance(sim_arr, dict):
+                    sim_arr = sim_arr.get("array", np.array([]))
+
                 # Build metrics object and evaluate
                 sim_metrics = SimulationMetrics(
-                    true_data=df_true.to_numpy() if hasattr(df_true, "to_numpy") else np.array(df_true),
+                    true_data=(
+                        df_true.to_numpy()
+                        if hasattr(df_true, "to_numpy")
+                        else np.array(df_true)
+                    ),
                     simulation_data=sim_arr,
                 )
                 sim_metrics.evaluate(
@@ -841,14 +881,20 @@ with comparisons_tab:
         with st.container():
             col1, col2 = st.columns(2)
             with col1:
-                file_upl1 = st.file_uploader(label="Experimento 1", type=[".csv"], accept_multiple_files=False)
+                file_upl1 = st.file_uploader(
+                    label="Experimento 1", type=[".csv"], accept_multiple_files=False
+                )
             with col2:
-                file_upl2 = st.file_uploader(label="Experimento 2", type=[".csv"], accept_multiple_files=False)
+                file_upl2 = st.file_uploader(
+                    label="Experimento 2", type=[".csv"], accept_multiple_files=False
+                )
 
             with st.expander("Previsualización", expanded=False):
                 if file_upl1:
                     _df1 = bin_to_df(file_upl1)
-                    df_experiment1 = _df1 if isinstance(_df1, DataFrame) else pd.DataFrame()
+                    df_experiment1 = (
+                        _df1 if isinstance(_df1, DataFrame) else pd.DataFrame()
+                    )
                     if not df_experiment1.empty:
                         st.dataframe(
                             df_experiment1,
@@ -858,7 +904,9 @@ with comparisons_tab:
                         )
                 if file_upl2:
                     _df2 = bin_to_df(file_upl2)
-                    df_experiment2 = _df2 if isinstance(_df2, DataFrame) else pd.DataFrame()
+                    df_experiment2 = (
+                        _df2 if isinstance(_df2, DataFrame) else pd.DataFrame()
+                    )
                     if not df_experiment2.empty:
                         st.dataframe(
                             df_experiment2,
@@ -903,7 +951,9 @@ with comparisons_tab:
                                 "Se eliminaron filas del experimento 1 para coincidir con el experimento 2 "
                                 f"({len_dif} filas diferentes)."
                             )
-                        elif experiment1.shape[0] < experiment2.shape[0]:  # Y mayor que X
+                        elif (
+                            experiment1.shape[0] < experiment2.shape[0]
+                        ):  # Y mayor que X
                             experiment2 = experiment2.head(experiment1.shape[0])
                             st.info(
                                 "Se eliminaron filas del experimento 2 para coincidir con el experimento 1 "
@@ -923,7 +973,9 @@ with comparisons_tab:
                                 statistic=st.session_state.wilcoxon_test.statistic,
                                 p_value=st.session_state.wilcoxon_test.p_value,
                             )
-                            st.dataframe(df_to_show, hide_index=True, use_container_width=True)
+                            st.dataframe(
+                                df_to_show, hide_index=True, use_container_width=True
+                            )
                             st.markdown(INFO_STATISTIC)
                             st.markdown(INFO_P_VALUE)
                         except Exception as data:
@@ -936,7 +988,9 @@ with comparisons_tab:
 
         # File Uploader.
         with st.container():
-            experiments_file_upl = st.file_uploader(label="Experimentos", type=[".csv"], accept_multiple_files=True)
+            experiments_file_upl = st.file_uploader(
+                label="Experimentos", type=[".csv"], accept_multiple_files=True
+            )
             if experiments_file_upl:
                 _dfs = bin_to_df(experiments_file_upl)
                 experiment_dataframes = _dfs if isinstance(_dfs, list) else [_dfs]
@@ -956,9 +1010,13 @@ with comparisons_tab:
         with st.container():
             if comparison_btn:
                 if len(experiments_file_upl) == 0:
-                    st.warning("No se han cargado datos de resultados de experimentos para esta prueba.")
+                    st.warning(
+                        "No se han cargado datos de resultados de experimentos para esta prueba."
+                    )
                 elif not len(experiments_file_upl) >= 3:
-                    st.warning("Debe cargar más de 3 muestras para realizar esta prueba.")
+                    st.warning(
+                        "Debe cargar más de 3 muestras para realizar esta prueba."
+                    )
                 else:
                     adjusted_sample_tuple = adjust_df_sizes(
                         [df[[col_comparison_selectbox]] for df in experiment_dataframes]
@@ -974,8 +1032,12 @@ with comparisons_tab:
                             "Verifica que los archivos CSV tengan la columna seleccionada y no estén vacíos."
                         )
                         # Opcional: Debug para inspeccionar qué se cargó
-                        st.warning(f"Debug: Número de archivos subidos: {len(experiments_file_upl)}")
-                        st.warning(f"Debug: Número de DataFrames procesados: {len(experiment_dataframes)}")
+                        st.warning(
+                            f"Debug: Número de archivos subidos: {len(experiments_file_upl)}"
+                        )
+                        st.warning(
+                            f"Debug: Número de DataFrames procesados: {len(experiment_dataframes)}"
+                        )
                         st.warning(
                             f"Debug: Columnas en cada DataFrame: {[df.columns.tolist() if not df.empty else 'Vacío' for df in experiment_dataframes]}"
                         )
@@ -988,7 +1050,8 @@ with comparisons_tab:
                         try:
                             # Friedman test.
                             friedman_samples = [
-                                df.iloc[:, 0].to_numpy().tolist() for df in samples_selection
+                                df.iloc[:, 0].to_numpy().tolist()
+                                for df in samples_selection
                             ]
                             friedman_test = Friedman(samples=friedman_samples)
                             friedman_test.test()
@@ -999,8 +1062,27 @@ with comparisons_tab:
                                 statistic=st.session_state.friedman_test_result.statistic,
                                 p_value=st.session_state.friedman_test_result.p_value,
                             )
-                            st.dataframe(df_to_show, hide_index=True, use_container_width=True)
+                            st.dataframe(
+                                df_to_show, hide_index=True, use_container_width=True
+                            )
                             st.markdown(INFO_STATISTIC)
                             st.markdown(INFO_P_VALUE)
                         except Exception as data:
                             st.exception(data)
+    with info_tab:
+        
+        tab_es, tab_en = st.tabs(["Español", "English"])
+
+        with tab_es:
+            try:
+                with open(APP_INFO_ES_PATH, "r", encoding="utf-8") as f:
+                    st.markdown(f.read())
+            except Exception as e:
+                st.error(f"Error cargando información en español: {e}")
+
+        with tab_en:
+            try:
+                with open(APP_INFO_EN_PATH, "r", encoding="utf-8") as f:
+                    st.markdown(f.read())
+            except Exception as e:
+                st.error(f"Error loading English information: {e}")

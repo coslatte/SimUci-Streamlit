@@ -2,7 +2,8 @@ import random
 import secrets
 import sys
 import traceback
-from typing import List, Tuple
+from pathlib import Path
+from typing import List, Tuple, Union
 import contextlib
 
 import joblib
@@ -112,7 +113,7 @@ def generate_id(digits: int = 10) -> str:
     return "".join([str(secrets.randbelow(10)) for _ in range(digits)])
 
 
-def format_df_time(df: DataFrame, rows_to_format: list[int] = None) -> DataFrame:
+def format_df_time(df: DataFrame, rows_to_format: list[int] | None = None) -> DataFrame:
     """
     Return a copy of the DataFrame with numeric time values prepared for display.
 
@@ -136,7 +137,7 @@ def format_df_time(df: DataFrame, rows_to_format: list[int] = None) -> DataFrame
 
     # Apply formatting only to the specified rows
     for idx, row in df.iterrows():
-        if idx in rows_to_format:
+        if int(idx) in rows_to_format:  # type: ignore[arg-type]
             for col in df.columns:
                 try:
                     # Try to convert to float
@@ -144,7 +145,7 @@ def format_df_time(df: DataFrame, rows_to_format: list[int] = None) -> DataFrame
                     if not pd.isna(value):
                         # Keep the original numeric value
                         # Formatting will be applied only for display
-                        result_df.at[idx, col] = value
+                        result_df.at[idx, col] = value  # type: ignore[index]
                 except (ValueError, TypeError):
                     # If it cannot be converted to float, keep the original value
                     pass
@@ -154,7 +155,7 @@ def format_df_time(df: DataFrame, rows_to_format: list[int] = None) -> DataFrame
 
 def format_time_columns(
     df: DataFrame,
-    exclude_rows: list[str] = None,
+    exclude_rows: list[str] | None = None,
 ) -> DataFrame:
     """
     Format columns that represent time (hours) for display.
@@ -209,7 +210,7 @@ def format_time_columns(
                         if pd.notna(value):
                             try:
                                 # Convert to string to avoid type issues
-                                formatted_col.at[idx] = format_value_for_display(value)
+                                formatted_col.at[idx] = format_value_for_display(float(value))  # type: ignore[arg-type]
                             except (ValueError, TypeError) as e:
                                 print(
                                     f"Error formatting value {value} in column '{col}', row {idx} (Información: {result_df.at[idx, 'Información']}): {str(e)}"
@@ -225,14 +226,14 @@ def format_time_columns(
                         if pd.notna(value):
                             try:
                                 # Convert to string to avoid type issues
-                                formatted_col.at[idx] = format_value_for_display(value)
+                                formatted_col.at[idx] = format_value_for_display(float(value))  # type: ignore[arg-type]
                             except (ValueError, TypeError) as e:
                                 print(f"Error formatting value {value} in column '{col}', index '{idx}': {str(e)}")
                     except Exception as e:
                         print(f"Unexpected error accessing data in column '{col}', index '{idx}': {str(e)}")
         else:
             # Para DataFrames normales, formatear todas las filas
-            formatted_col = result_df[col].apply(lambda x: format_value_for_display(x) if pd.notna(x) else x)
+            formatted_col = result_df[col].apply(lambda x: format_value_for_display(float(x)) if pd.notna(x) else x)  # type: ignore[arg-type]
 
         # Assign the formatted column back, converting everything to string to avoid ArrowTypeError
         result_df[col] = formatted_col.astype(str)
@@ -269,7 +270,7 @@ def format_value_for_display(value: float | int) -> str:
 def format_df_stats(
     df: DataFrame,
     column_label: str = "Información",
-    labels_structure: dict[int | str] | list[str] | None = None,
+    labels_structure: dict[int | str, str] | list[str] | None = None,
 ) -> DataFrame:
     """
     Insert a left-most column with labels for the provided DataFrame.
@@ -337,7 +338,7 @@ def build_df_for_stats(
     include_metrics=False,
     include_prediction_mean=False,
     include_info_label=True,
-    labels_structure: dict[int | str] | list[str] | None = None,
+    labels_structure: dict[int | str, str] | list[str] | None = None,
     metrics_as_percentage: bool = False,
     metrics_reference: pd.Series | dict | None = None,
     patient_data: dict | None = None,
@@ -402,7 +403,7 @@ def build_df_for_stats(
                 eps = 1e-9
                 for col in EXP_VARS:
                     try:
-                        mean_val = float(df_output.at[mean_idx, col])
+                        mean_val = float(df_output.at[mean_idx, col])  # type: ignore[arg-type]
                     except Exception:
                         # If conversion fails, skip
                         continue
@@ -440,14 +441,18 @@ def build_df_for_stats(
         ##########################
         # CONFIDENCE INTERVALS #
         ##########################
+        # Initialize to avoid possibly unbound errors
+        li_s: pd.Series = pd.Series(dtype=float)
+        ls_s: pd.Series = pd.Series(dtype=float)
+        
         if include_confint:
             mean = df[EXP_VARS].mean()
             std = df[EXP_VARS].std()
 
             li, ls = StatsUtils.confidenceinterval(mean.values, std.values, sample_size)
             # Build series and coerce invalid numbers to 0 for clearer presentation in the UI.
-            li_s = pd.Series(li, index=EXP_VARS).astype(float)
-            ls_s = pd.Series(ls, index=EXP_VARS).astype(float)
+            li_s = pd.Series(list(li), index=EXP_VARS).astype(float)
+            ls_s = pd.Series(list(ls), index=EXP_VARS).astype(float)
 
             # Replace +/- inf with NaN, then fill NaN/None with 0 so 'Límite Inf/Sup' show 0 instead of None
             li_s = li_s.replace([np.inf, -np.inf], np.nan).fillna(0.0)
@@ -546,11 +551,11 @@ def bin_to_df(files: UploadedFile | list[UploadedFile]) -> DataFrame | list[Data
 
 
 def extract_true_data_from_csv(
-    csv_path: str,
+    csv_path: Union[str, Path, None] = None,
     index: int | None = None,
-    as_dataframe=True,
+    as_dataframe: bool = True,
     **kwargs,
-) -> DataFrame | tuple[float]:
+) -> DataFrame | tuple | dict | list:
     """
     Extract the clinical data for a single patient or all patients from a CSV by row index.
 
@@ -573,6 +578,9 @@ def extract_true_data_from_csv(
     # Backwards compatibility: accept Spanish kwarg 'ruta_archivo_csv'
     if "ruta_archivo_csv" in kwargs and (csv_path is None or csv_path == ""):
         csv_path = kwargs.get("ruta_archivo_csv")
+
+    if csv_path is None or (isinstance(csv_path, str) and csv_path == ""):
+        raise ValueError("csv_path is required and cannot be empty")
 
     data: pd.DataFrame = pd.read_csv(csv_path)
 
@@ -618,9 +626,9 @@ def extract_true_data_from_csv(
             )
 
         if index is not None:
-            return dict_to_tuple(extracted_data)
+            return dict_to_tuple(extracted_data)  # type: ignore[arg-type]
         else:
-            return [dict_to_tuple(d) for d in extracted_data]
+            return [dict_to_tuple(d) for d in extracted_data]  # type: ignore[arg-type]
 
     if as_dataframe:
         if index is not None:
@@ -781,6 +789,7 @@ def adjust_df_sizes(dataframes: List[DataFrame]) -> Tuple[List[DataFrame], int]:
             return [df.head(min_len) for df in dataframes], min_len
     except Exception as e:
         print(f"Error adjusting DF sizes: {e}")
+        return dataframes, -1
 
 
 def build_df_test_result(statistic: float, p_value: float) -> DataFrame:
@@ -804,7 +813,7 @@ def build_df_test_result(statistic: float, p_value: float) -> DataFrame:
     return df
 
 
-def simulate_true_data(csv_path: str, selection: int, **kwargs) -> DataFrame | list[DataFrame]:
+def simulate_true_data(csv_path: str | None, selection: int | None, **kwargs) -> DataFrame | list[DataFrame]:
     """
     Run simulations using real patient data from a CSV file.
 
@@ -824,7 +833,7 @@ def simulate_true_data(csv_path: str, selection: int, **kwargs) -> DataFrame | l
     if "df_selection" in kwargs and (selection is None or selection == 0):
         selection = kwargs.get("df_selection")
 
-    def experiment_helper(t: tuple[float]) -> DataFrame:
+    def experiment_helper(t: tuple) -> DataFrame:
         """Build a DataFrame with simulation results for a single patient's tuple `t`.
 
         Expected tuple order produced by `extract_real_data(..., return_type='tuple')`:
@@ -853,16 +862,18 @@ def simulate_true_data(csv_path: str, selection: int, **kwargs) -> DataFrame | l
         return e
 
     if selection != -1:
-        t: tuple[float] = extract_true_data_from_csv(csv_path, index=selection, return_type="tuple")
+        t: tuple = extract_true_data_from_csv(csv_path, index=selection, return_type="tuple")  # type: ignore
 
         # Return a DataFrame with the simulation results
         return experiment_helper(t)
     elif selection == -1:
+        if csv_path is None:
+            raise ValueError("csv_path is required when selection is -1")
         datalen = pd.read_csv(csv_path).shape[0]
 
         # Return a list of DataFrames (one per patient)
         return [
-            experiment_helper(extract_true_data_from_csv(csv_path, index=i, return_type="tuple"))
+            experiment_helper(extract_true_data_from_csv(csv_path, index=i, return_type="tuple"))  # type: ignore[arg-type]
             for i in range(datalen)
         ]
     else:
@@ -991,7 +1002,7 @@ def get_data_for_prediction(data: dict[str, int] | pd.DataFrame) -> pd.DataFrame
         raise
 
 
-def simulate_and_predict_patient(csv_path: str, selection: int, **kwargs) -> tuple[DataFrame, dict]:
+def simulate_and_predict_patient(csv_path: str | None, selection: int | None, **kwargs) -> tuple[DataFrame, dict]:
     """
     Run simulation and prediction for a specific patient identified by row index in a CSV.
 
@@ -1013,6 +1024,10 @@ def simulate_and_predict_patient(csv_path: str, selection: int, **kwargs) -> tup
 
     # Extract patient data tuple
     patient_tuple = extract_true_data_from_csv(csv_path, index=selection, return_type="tuple")
+
+    # Ensure we have a valid tuple
+    if not isinstance(patient_tuple, tuple):
+        raise ValueError("Expected tuple from extract_true_data_from_csv")
 
     # Run simulation for the patient
     n_runs = kwargs.get("corridas_simulacion", SIM_RUNS_DEFAULT)
@@ -1126,20 +1141,118 @@ def prepare_patient_data_for_prediction(patient_tuple) -> dict:
         }
 
 
-def apply_theme(theme_name):
-    """Apply the selected theme to the Streamlit application."""
+def apply_theme(theme_name: str) -> None:
+    """
+    Store the theme preference in session state.
+    Note: Streamlit does not support dynamic theme switching without CSS injection.
+    For a coherent solution, themes should be configured statically in .streamlit/config.toml.
+    This function now only stores the preference without applying changes.
 
-    if theme_name == "dark":
-        st._config.set_option("theme.base", "dark")
-        st._config.set_option("theme.primaryColor", "#66C5A0")
-        st._config.set_option("theme.backgroundColor", "#0E1117")
-        st._config.set_option("theme.secondaryBackgroundColor", "#262730")
-    else:
-        st._config.set_option("theme.base", "light")
-        st._config.set_option("theme.primaryColor", "#66C5A0")
-        st._config.set_option("theme.backgroundColor", "#FFFFF8")
-        st._config.set_option("theme.secondaryBackgroundColor", "#F3F6F0")
+    Args:
+        theme_name (str): Either "light" or "dark"
+    """
 
+    import streamlit as st
+
+    # Store preference in session state
+    if hasattr(st, "session_state"):
+        st.session_state.theme_preference = theme_name
+
+    # Removed CSS injection for security and coherence reasons.
+    # Themes should be handled via Streamlit's static configuration.
+
+
+def set_theme(theme_name: str) -> None:
+    """
+    Set the theme by modifying .streamlit/config.toml with the complete color palette.
+    This changes the base theme configuration and requires app restart/rerun to apply.
+    """
+    import streamlit as st
+    import os
+    from utils.constants.theme import LIGHT_COLORS, DARK_COLORS
+
+    config_path = ".streamlit/config.toml"
+    if not os.path.exists(config_path):
+        st.error("Archivo .streamlit/config.toml no encontrado.")
+        return
+
+    try:
+        # Select colors based on theme
+        if theme_name == "dark":
+            colors = DARK_COLORS
+            base = "dark"
+        else:
+            colors = LIGHT_COLORS
+            base = "light"
+
+        # Generate new TOML content
+        new_content = f"""[theme]
+base = "{base}"
+primaryColor = "{colors['primaryColor']}"
+backgroundColor = "{colors['backgroundColor']}"
+secondaryBackgroundColor = "{colors['secondaryBackgroundColor']}"
+textColor = "{colors['textColor']}"
+"""
+
+        # Write the new configuration
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+
+        # Update session state
+        st.session_state.theme_preference = theme_name
+
+        # Force a rerun to attempt to apply changes immediately
+        # Note: Streamlit might require a full browser reload for config.toml changes
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Error al cambiar el tema: {e}")
+
+    import streamlit as st
+    import os
+
+    config_path = ".streamlit/config.toml"
+    if not os.path.exists(config_path):
+        st.error("File .streamlit/config.toml not found.")
+        return
+
+    try:
+        # Read current content
+        with open(config_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Determine if it's already the desired theme
+        current_is_light = 'base = "light"' in content
+        current_is_dark = 'base = "dark"' in content
+
+        if theme_name == "light" and current_is_light:
+            st.info("The theme is already set to 'light'.")
+            return
+        elif theme_name == "dark" and current_is_dark:
+            st.info("The theme is already set to 'dark'.")
+            return
+
+        # Replace the base
+        if theme_name == "light":
+            new_content = content.replace('base = "dark"', 'base = "light"', 1)
+        elif theme_name == "dark":
+            new_content = content.replace('base = "light"', 'base = "dark"', 1)
+        else:
+            st.error(f"Invalid theme '{theme_name}'. Use 'light' or 'dark'.")
+            return
+
+        # Write back the modified content
+        with open(config_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+
+        # Update session state
+        st.session_state.theme_preference = theme_name
+
+        # Inform the user
+        st.info(f"Theme changed to '{theme_name}'. Restart the app to apply changes (e.g., press 'R' in the browser or restart the server).")
+
+    except Exception as e:
+        st.error(f"Error changing theme: {e}")
 
 def simulate_all_true_data(
     true_data: pd.DataFrame | None = None,
@@ -1148,7 +1261,7 @@ def simulate_all_true_data(
     seed: int | None = None,
     show_progress: bool = False,
     progress_label: str = "Simulando muestras...",
-) -> np.ndarray:
+) -> Union[np.ndarray, dict]:
     """
     Simulate the experiment for every patient present in `true_data` (DataFrame) or in the
     canonical CSV (`FICHERODEDATOS_CSV_PATH`) when `true_data` is None.
@@ -1163,7 +1276,8 @@ def simulate_all_true_data(
 
     # Prefer to use the extractor which already maps CSV rows to the expected dict structure
     if true_data is None:
-        records = extract_true_data_from_csv(csv_path=FICHERODEDATOS_CSV_PATH, index=None, as_dataframe=False)
+        records_data = extract_true_data_from_csv(csv_path=FICHERODEDATOS_CSV_PATH, index=None, as_dataframe=False)
+        records: list[dict] = records_data if isinstance(records_data, list) else []
     elif isinstance(true_data, pd.DataFrame):
         # Two possible kinds of DataFrame can be passed:
         # 1) A patient-input DataFrame (columns like 'Edad', 'Diag.Ing1', 'APACHE', ...)

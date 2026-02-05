@@ -67,7 +67,11 @@ from .paths import (
 # Theme
 from .theme import (
     PRIMARY_COLOR,
-    SECUNDARY_BACKGROUND_COLOR,
+    BACKGROUND_COLOR,
+    SECONDARY_BACKGROUND_COLOR, 
+    TEXT_COLOR,
+    get_theme_config,
+    get_current_theme_colors,
 )
 
 __all__ = [
@@ -122,5 +126,9 @@ __all__ = [
     "PREDICTION_MODEL_PATH",
     # Theme
     "PRIMARY_COLOR",
-    "SECUNDARY_BACKGROUND_COLOR",
+    "BACKGROUND_COLOR",
+    "SECONDARY_BACKGROUND_COLOR", 
+    "TEXT_COLOR",
+    "get_theme_config",
+    "get_current_theme_colors",
 ]
