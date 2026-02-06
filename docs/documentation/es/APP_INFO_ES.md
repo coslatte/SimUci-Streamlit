@@ -55,7 +55,3 @@ Esta herramienta está diseñada para ayudar a administradores hospitalarios y c
 - Los resultados son simulaciones y no predicciones definitivas
 - Requiere validación con datos específicos de cada institución
 - No reemplaza el juicio clínico profesional
-
-## Contacto
-
-Para soporte técnico o consultas sobre el uso de la aplicación, consulte la documentación completa en el repositorio del proyecto.

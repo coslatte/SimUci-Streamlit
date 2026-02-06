@@ -55,7 +55,3 @@ This tool is designed to help hospital administrators and clinicians to:
 - Results are simulations and not definitive predictions
 - Requires validation with institution-specific data
 - Does not replace professional clinical judgment
-
-## Contact
-
-For technical support or inquiries about application usage, consult the complete documentation in the project repository.
