@@ -1,6 +1,6 @@
 # SimUCI
 
-**Aplicación para la simulación de la evolución pos-egreso de pacientes ventilados en Cuidados Intensivos**
+Aplicación para la simulación de la evolución pos-egreso de pacientes ventilados en Cuidados Intensivos
 
 ## Introducción
 
@@ -8,19 +8,20 @@ SimUCI utiliza simulación de eventos discretos y modelos de aprendizaje automá
 
 ## Características Principales
 
-*   **Simulación de Pacientes**: Modelado de trayectorias en UCI.
-*   **Predicción y Validación**: Estimaciones de supervivencia y validación estadística.
-*   **Análisis Comparativo**: Comparación de datos simulados con reales.
+* **Simulación de Pacientes**: Modelado de trayectorias en UCI.
+* **Predicción y Validación**: Estimaciones de supervivencia y validación estadística.
+* **Análisis Comparativo**: Comparación de datos simulados con reales.
 
 ## Inicio Rápido
 
 ### Requisitos
 
-*   Python 3.9 o superior
+* Python 3.9 o superior
 
 ### Instalación
 
-1.  Instalar dependencias:
+1. Instalar dependencias:
+
     ```powershell
     python -m pip install -r requirements.txt
     ```
@@ -40,11 +41,12 @@ python -m pytest
 ## Despliegue
 
 La aplicación está disponible en línea:
-[SimUCI en Streamlit Community Cloud](https://simuci-v0.streamlit.app/)
+[SimUCI en Streamlit Community Cloud](https://simuci.streamlit.app/)
 
-> **Nota (Cuba)**: El acceso requiere VPN.
+> **Nota**: Desde Cuba el acceso requiere VPN.
 
 ## Documentación Detallada
 
 Consulta la carpeta `docs/documentation` para más información:
-*   [Índice de Documentación](docs/documentation/INDEX.md)
+
+* [Índice de Documentación](docs/documentation/INDEX.md)
