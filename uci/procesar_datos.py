@@ -1,194 +1,130 @@
+"""Data loading and column extraction utilities for patient CSV files.
+
+All public helpers accept a *path* to a CSV file and return either a
+sorted column (as a list) or a generator that yields values one by one.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Generator
+
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 
-def cargar_fichero(path: str, column: str) -> list:
-    """
-    Retorna una columna organizada por fecha de ingreso
+# Column names expected in the patient CSV
+_DATE_COLUMNS = ["fecha_ingreso", "fecha_egreso", "fecha_ing_uci", "fecha_egr_uci"]
+
+
+def cargar_fichero(path: str | Path, column: str) -> list:
+    """Load a patient CSV and return one column sorted by admission date.
 
     Args:
-        path (str): Direccion del archivo de datos
-        column (str): Nombre de la columna a devolver
+        path: Path to the CSV data file.
+        column: Name of the column to extract.
 
     Returns:
-        list: Una lista de los valores de la columna
+        A list with the values of *column*, ordered by ``fecha_ingreso``.
     """
     df = pd.read_csv(
         path,
         index_col=0,
-        parse_dates=["fecha_ingreso", "fecha_egreso", "fecha_ing_uci", "fecha_egr_uci"],
+        parse_dates=_DATE_COLUMNS,
     )
     df["tiempo_vam"] = df["tiempo_vam"].astype(int)
     df["diagnostico_preuci"] = df["diagnostico_preuci"].astype("category")
-    estadia = list(df.sort_values("fecha_ingreso")[column])
-    return estadia
+    return list(df.sort_values("fecha_ingreso")[column])
 
 
-def get_fecha_ingreso(path: str):
-    """
-    Genrador de las fechas de ingreso
+# ---------------------------------------------------------------------------
+# Column generators
+# ---------------------------------------------------------------------------
 
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        tupla: Tupla con la fecha siguiente a la que esta y la fecha actual
-    """
-    fecha_ingreso = cargar_fichero(path, "fecha_ingreso")
-    fecha = fecha_ingreso[0]
-
-    for fecha_siguiente in fecha_ingreso:
-        yield (fecha_siguiente, fecha)
-        fecha = fecha_siguiente
+def _iter_column(path: str | Path, column: str) -> Generator:
+    """Yield every value from *column* (sorted by admission date)."""
+    yield from cargar_fichero(path, column)
 
 
-def get_fecha_egreso(path: str):
-    """
-    Generador de fecha de egreso
-
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        datetime: La fecha de egreso
-    """
-    fecha_ingreso = cargar_fichero(path, "fecha_egreso")
-    for fecha in fecha_ingreso:
-        yield fecha
+def get_fecha_ingreso(path: str | Path) -> Generator[tuple, None, None]:
+    """Yield ``(next_date, current_date)`` tuples for admission dates."""
+    fechas = cargar_fichero(path, "fecha_ingreso")
+    current = fechas[0]
+    for siguiente in fechas:
+        yield (siguiente, current)
+        current = siguiente
 
 
-def get_fecha_ing_uci(path: str):
-    """
-    Generador de las fechas de ingreso a la UCI
-
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        datetime: La fecha de ingreso a la UCI
-    """
-    fecha_ingreso = cargar_fichero(path, "fecha_ing_uci")
-    for fecha in fecha_ingreso:
-        yield fecha
+def get_fecha_egreso(path: str | Path) -> Generator:
+    """Yield discharge dates."""
+    yield from _iter_column(path, "fecha_egreso")
 
 
-def get_tiempo_vam(path: str):
-    """
-    Generador del tiempo en VAM
-
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        int: Tiempo que esta en VAM
-    """
-    tiempo_vam = cargar_fichero(path, "tiempo_vam")
-    for horas in tiempo_vam:
-        yield horas
+def get_fecha_ing_uci(path: str | Path) -> Generator:
+    """Yield ICU admission dates."""
+    yield from _iter_column(path, "fecha_ing_uci")
 
 
-def get_fecha_egr_uci(path: str):
-    """
-    Genrador de fecha de egreso de la UCi
+def get_tiempo_vam(path: str | Path) -> Generator:
+    """Yield VAM time (hours) for each patient."""
+    yield from _iter_column(path, "tiempo_vam")
+
+
+def get_fecha_egr_uci(path: str | Path) -> Generator:
+    """Yield ICU discharge dates."""
+    yield from _iter_column(path, "fecha_egr_uci")
+
+
+def get_estadia_uci(path: str | Path) -> Generator:
+    """Yield ICU stay duration for each patient."""
+    yield from _iter_column(path, "estadia_uci")
+
+
+def get_sala_egreso(path: str | Path) -> Generator:
+    """Yield discharge ward for each patient."""
+    yield from _iter_column(path, "sala_egreso")
+
+
+def get_evolucion(path: str | Path) -> Generator:
+    """Yield patient outcome (survived / deceased)."""
+    yield from _iter_column(path, "evolucion")
+
+
+def get_diagnostico(path: str | Path) -> Generator:
+    """Yield pre-ICU diagnosis for each patient."""
+    yield from _iter_column(path, "diagnostico_preuci")
+
+
+# ---------------------------------------------------------------------------
+# Aggregate queries
+# ---------------------------------------------------------------------------
+
+def get_diagnostico_list(path: str | Path) -> list:
+    """Return the unique pre-ICU diagnoses present in the data file.
 
     Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        datetime: La fecha de egreso de la UCI
-    """
-    fecha_ingreso = cargar_fichero(path, "fecha_egr_uci")
-    for fecha in fecha_ingreso:
-        yield fecha
-
-
-def get_estadia_uci(path: str):
-    """
-    Genreador de la estadia en la UCI
-
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        int: La cantidad de dias en la UCI
-    """
-    estadia = cargar_fichero(path, "estadia_uci")
-    for est in estadia:
-        yield est
-
-
-def get_sala_egreso(path: str):
-    """
-    Generador de la sala de egreso de la UCI
-
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        str: La sala de egreso de la UCI
-    """
-    salas = cargar_fichero(path, "sala_egreso")
-    for sala in salas:
-        yield sala
-
-
-def get_evolucion(path: str):
-    """
-    Generador de la evolucion del paciente(vive o fallece)
-
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        str: La evolucion del paciente
-    """
-    evoluciones = cargar_fichero(path, "evolucion")
-    for evolucion in evoluciones:
-        yield evolucion
-
-
-def get_diagnostico(path: str):
-    """
-    Generador del diagnostico antes de ingresar a la UCI
-
-    Args:
-        path (str): Direccion del archivo de datos
-
-    Yields:
-        str: Diagnostico del paciente antes de entrar a la UCI
-    """
-    diagnosticos = cargar_fichero(path, "diagnostico_preuci")
-    for daignostico in diagnosticos:
-        yield daignostico
-
-
-def get_diagnostico_list(path: str):
-    """
-    Obtiene los diagnosticos de los paciente
-
-    Args:
-        path (str): Direccion del archivo de datos
+        path: Path to the CSV data file.
 
     Returns:
-        list: Lista de todos los diagnosticos
+        Array-like of unique diagnosis values.
     """
-    df = pd.read_csv(path)
-    diagnostico_list = df["diagnostico_preuci"].unique()
-    return diagnostico_list
+    df = pd.read_csv(path, index_col=0)
+    return list(df["diagnostico_preuci"].unique())
 
 
-def get_time_simulation(path: str):
-    """
-    Obtiene la cantidad de tiempo del archivo de datos
+def get_time_simulation(path: str | Path) -> int:
+    """Compute total simulation horizon in hours from admission to last discharge.
 
     Args:
-        path (str): Direccion del archivo de datos
+        path: Path to the CSV data file.
 
     Returns:
-        int: La cantidad de horas que hay en el archivo de datos
+        Number of hours between the earliest admission and the latest discharge.
     """
-    ingreso = cargar_fichero(path, "fecha_ingreso")[0]
-    egreso = sorted(cargar_fichero(path, "fecha_egreso"))[-1]
-    time_day = egreso - ingreso
-    print(time_day)
-    time = time_day.days * 24
-    return time
+    first_admission = cargar_fichero(path, "fecha_ingreso")[0]
+    last_discharge = max(cargar_fichero(path, "fecha_egreso"))
+    span = last_discharge - first_admission
+    hours: int = span.days * 24
+    logger.debug("Simulation horizon: %s (%d hours)", span, hours)
+    return hours

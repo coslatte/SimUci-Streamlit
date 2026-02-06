@@ -16,11 +16,13 @@ The statistical analysis module (`uci/stats.py`) provides comprehensive tools fo
 $$\text{Coverage}_v = \frac{1}{N} \sum_{i=1}^{N} \mathbf{1}[t_{i,v} \in CI_{i,v}] \times 100\%$$
 
 Where:
+
 - $t_{i,v}$ = true value for patient $i$, variable $v$
 - $CI_{i,v}$ = confidence interval from simulation for patient $i$, variable $v$
 - $N$ = number of patients
 
 **Interpretation**:
+
 | Coverage | Interpretation |
 |----------|---------------|
 | > 90% | Excellent calibration |
@@ -29,6 +31,7 @@ Where:
 | < 70% | Poor calibration, review model |
 
 **Code Example**:
+
 ```python
 from uci.stats import SimulationMetrics
 
@@ -95,6 +98,7 @@ $$MAPE = 100 \times \frac{1}{N} \sum_{i,v} \frac{|\bar{x}_{i,v} - t_{i,v}|}{t_{i
 $$D = \sup_x |F_{sim}(x) - F_{true}(x)|$$
 
 Where:
+
 - $F_{sim}(x)$ = empirical CDF of simulated data
 - $F_{true}(x)$ = empirical CDF of true data
 
@@ -131,11 +135,13 @@ for var, result in ks_result["per_variable"].items():
 **Purpose**: Similar to KS but more sensitive to differences in distribution tails.
 
 **Features**:
+
 - More powerful than KS for detecting tail differences
 - Better for detecting outliers
 - Uses k-sample variant for comparing two distributions
 
 **Code**:
+
 ```python
 ad_result = metrics.anderson_darling_result
 # Structure: {"statistic": 1.234, "significance_level": 0.045}
@@ -153,16 +159,19 @@ if ad_result["significance_level"] < 0.05:
 **Purpose**: Compare two related samples (paired observations).
 
 **Use Cases**:
+
 - Compare two different simulation configurations
 - Before/after treatment effect analysis
 - Comparing two experiments on the same patients
 
 **Assumptions**:
+
 - Paired samples (same patients)
 - Differences are symmetric
 - At least 5-10 paired observations
 
 **Usage**:
+
 ```python
 from uci.stats import Wilcoxon
 
@@ -188,16 +197,19 @@ if wilcoxon.p_value < 0.05:
 **Purpose**: Compare three or more related samples.
 
 **Use Cases**:
+
 - Compare multiple simulation configurations
 - Ranking different treatment options
 - Evaluating multiple parameter settings
 
 **Assumptions**:
+
 - Three or more related samples
 - Same subjects across all samples
 - Ordinal or continuous data
 
 **Usage**:
+
 ```python
 from uci.stats import Friedman
 
@@ -315,28 +327,34 @@ else:
 
 ## Confidence Interval Calculation
 
-### StatsUtils.confidenceinterval
+### StatsUtils.confidence_interval
+
+> **Note**: The old name `confidenceinterval` is still available as an alias for backward compatibility.
 
 ```python
 class StatsUtils:
     @staticmethod
-    def confidenceinterval(
+    def confidence_interval(
         mean: np.ndarray,
         std: np.ndarray,
         n: int,
-        coef: float = 0.95
+        confidence: float = 0.95,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Calculate confidence interval using normal approximation.
+        Compute a confidence interval for the given summary statistics.
         
         Formula:
             CI = mean ± z × (std / √n)
         
-        Where z = ppf(1 - α/2) for the given confidence coefficient.
+        Where z = ppf(1 - α/2) for the given confidence level.
         """
+
+    # Backward-compatible alias
+    confidenceinterval = confidence_interval
 ```
 
 **Usage**:
+
 ```python
 from uci.stats import StatsUtils
 
@@ -403,7 +421,7 @@ simulation_data.shape == (n_patients, n_runs, n_variables)
 
 ### 3. Interpreting Combined Metrics
 
-```
+```text
 Scenario Analysis:
 
 1. Coverage High + RMSE Low + KS p>0.05
@@ -422,6 +440,7 @@ Scenario Analysis:
 ### 4. Handling Zero Values
 
 MAPE automatically excludes zero values:
+
 ```python
 # Positions where true values are zero are excluded
 # to avoid division by zero

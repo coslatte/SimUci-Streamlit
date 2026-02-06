@@ -9,10 +9,28 @@ y este proyecto se adhiere al [Versionado Semántico](https://semver.org/lang/es
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Documentación**: Creados `APP_INFO_ES.md` y `APP_INFO_EN.md` para las pestañas de información en la aplicación.
+
 ### Cambiado
+
+- **Modularización de Validation UI**: Refactorizado `render_validation` en `utils/validation_ui/validation_ui.py` en sub-renderers distintos para mejor mantenibilidad (Separación de Responsabilidades). Eliminado debugging con `print`, añadido `__all__` explícito, type hints, y corregida sintaxis LaTeX para fórmulas.
 - **Refactorización de Utils**: Se reorganizó el directorio `utils` en sub-paquetes modulares (`helpers`, `validation_ui`, `visuals`) para mejorar la estructura y mantenibilidad del proyecto.
+- **Refactorización del paquete `uci/`** (end-to-end): Revisión completa de todos los módulos del paquete `uci/` para corregir errores, mejorar consistencia y mantenibilidad:
+  - **`distribuciones.py`**: Corregido typo `tiemp_postUCI_clustet1` → `tiemp_postUCI_cluster1`. Todos los samplers ahora retornan `float` nativo en vez de mezcla `ndarray`/`float`. Reemplazado `print()` debug por `logging`. CSV de centroides cacheado con `@lru_cache`. Extraídos helpers `_sample_exponential` / `_sample_weibull`. Corregido potencial retorno `None` en `tiemp_postUCI_cluster0`. Añadidas anotaciones de tipo y docstrings.
+  - **`simulacion.py`**: Eliminado helper `_to_scalar()` (14 líneas, ya innecesario). Eliminado import `numpy` no utilizado. Simplificado tipo de `cluster` de `np.intp` a `int`. Añadidos docstrings de módulo/clase/método.
+  - **`experiment.py`**: Añadidas anotaciones de tipo a todos los atributos y parámetros. Eliminados comentarios muertos. Añadidos docstrings de módulo/clase/función. Simplificada lógica de conversión de tipos en `multiple_replication`.
+  - **`procesar_datos.py`**: Eliminadas 9 funciones generadoras copy-paste mediante helper compartido `_iter_column` con `yield from`. Corregidos typos en docstrings ("Genrador", "Genreador", variable `daignostico`). Reemplazado `print()` debug en `get_time_simulation` por `logging`. Corregido `get_diagnostico_list` sin `index_col=0`. Cambiado `sorted(list)[-1]` por `max()`. Añadido soporte para tipo `Path`.
+  - **`stats.py`**: Reemplazadas ~15 llamadas `print()` por `logging` (warnings, resultados, errores). Reemplazado `traceback.print_exc()` por `logger.exception()`. Movidos 3 `import` dentro de métodos al nivel superior del módulo. Cambiado name-mangling doble underscore (`__method`) a single underscore (`_method`). Extraídos helpers `_coerce_true_data`, `_align_shape`, `_variable_label`. Renombrado `confidenceinterval` → `confidence_interval` (alias preservado por compatibilidad). Eliminados comentarios muertos. Añadidos docstrings completos. Corregidos warnings de tipo Pylance usando atributos nombrados (`.statistic`, `.pvalue`).
+
+### Corregido
+
+- **Resolución de Rutas**: Actualizado `utils/constants/paths.py` para usar rutas absolutas ancladas a `_PROJECT_ROOT`, corrigiendo `FileNotFoundError` al cargar archivos de documentación en Streamlit.
+- **Bug de Layout UI**: Corregida lógica de desempaquetado de `st.columns` en `app.py` para resolver `StreamlitInvalidColumnSpecError`.
 
 ### Planificado
+
 - Integración de modelos adicionales de machine learning para predicción de mortalidad
 - Funcionalidad de exportación para informes de validación (PDF/HTML)
 - Soporte multilenguaje para la interfaz de usuario
@@ -23,6 +41,7 @@ y este proyecto se adhiere al [Versionado Semántico](https://semver.org/lang/es
 ## [0.2.0-beta] - 2025-09-29
 
 ### Añadido
+
 - **Mejoras en la UI de Validación**: Nuevas secciones desplegables en `utils/validation_ui.py` que explican las métricas de validación (RMSE, MAE, MAPE) con definiciones detalladas, unidades y guías de interpretación
 - **Desplegable de Comparación de Distribuciones**: Nuevo componente `st.expander` que explica cómo interpretar superposiciones de distribuciones, picos desplazados y colas largas
 - **Documentación de Pruebas Estadísticas**: Explicaciones dentro de la interfaz para las pruebas de Kolmogorov-Smirnov (KS) y Anderson-Darling (AD)
@@ -30,6 +49,7 @@ y este proyecto se adhiere al [Versionado Semántico](https://semver.org/lang/es
 - **Caché del Estado de Sesión**: Los resultados de validación ahora se almacenan en caché con marcas de tiempo para evitar cálculos redundantes
 
 ### Cambiado
+
 - **Restauración de Sintaxis en `app.py`**: Corrección de bloques de código corruptos después de operaciones de envolvimiento:
   - Restaurada la llamada `st.toggle(...)` con argumentos correctos (`label`, `help`, `key`)
   - Re-indentado y reorganizado el bloque `try/except` para el flujo de predicción
@@ -38,11 +58,13 @@ y este proyecto se adhiere al [Versionado Semántico](https://semver.org/lang/es
 - **Formato de Tiempo Mejorado**: La función `format_time_columns()` ahora excluye correctamente filas especificadas y maneja casos extremos
 
 ### Corregido
+
 - **Errores de Sintaxis en `app.py`**: Resueltos errores de compilación causados por paréntesis mal colocados y orden de argumentos de palabra clave
 - **Indentación del Bloque de Predicción**: Corregidos problemas de indentación en el flujo de simulación a predicción
 - **Consistencia de Claves de Estado de Sesión**: Asegurada la consistencia de todas las claves de `st.session_state` entre pestañas
 
 ### Seguridad
+
 - Sin cambios relacionados con seguridad en esta versión
 
 ---
@@ -50,6 +72,7 @@ y este proyecto se adhiere al [Versionado Semántico](https://semver.org/lang/es
 ## [0.1.0] - 2025-08-28
 
 ### Añadido
+
 - **Estructura Inicial del Proyecto**: Andamiaje completo de la aplicación con arquitectura modular
 - **Motor de Simulación**: Funcionalidad central de simulación usando SimPy para simulación de eventos discretos
   - Simulación de paciente individual (`simulate_true_data`)
@@ -97,13 +120,16 @@ y este proyecto se adhiere al [Versionado Semántico](https://semver.org/lang/es
     - Colores del tema
 
 ### Cambiado
+
 - **`build_df_for_stats`**: Ahora soporta métricas de calibración (conteo/porcentaje de iteraciones dentro del intervalo de confianza) y comparación con referencia externa
 - **`format_df_stats`**: Acepta estructuras de etiquetas flexibles (`dict`, `list`, o `None`) con valores por defecto sensatos
 
 ### Corregido
+
 - Versión inicial - sin correcciones de versiones anteriores
 
 ### Dependencias
+
 - Python >= 3.9 (recomendado 3.13+)
 - Streamlit >= 1.53.1
 - SimPy >= 4.1.1
@@ -119,10 +145,11 @@ y este proyecto se adhiere al [Versionado Semántico](https://semver.org/lang/es
 
 ## Resumen del Historial de Versiones
 
-| Versión | Fecha | Descripción |
-|---------|-------|-------------|
-| 0.2.0-beta | 2025-09-29 | Mejoras en UI de validación, correcciones de sintaxis |
-| 0.1.0 | 2025-08-28 | Versión inicial con funcionalidad central |
+| Versión      | Fecha      | Descripción                                           |
+| ------------ | ---------- | ----------------------------------------------------- |
+| Sin publicar | 2026-02-06 | Refactorización end-to-end del paquete `uci/`         |
+| 0.2.0-beta   | 2025-09-29 | Mejoras en UI de validación, correcciones de sintaxis |
+| 0.1.0        | 2025-08-28 | Versión inicial con funcionalidad central             |
 
 ---
 

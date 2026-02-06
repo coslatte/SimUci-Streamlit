@@ -92,10 +92,10 @@ st.set_page_config(
 )
 
 # THEME PREFERENCE INITIALIZATION
-if 'theme_preference' not in st.session_state:
+if "theme_preference" not in st.session_state:
     config_path = ".streamlit/config.toml"
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             content = f.read()
         if 'base = "light"' in content:
             st.session_state.theme_preference = "light"
@@ -119,36 +119,37 @@ with st.sidebar:
     #
     with st.container():
         st.title(body="SimUci", anchor=False, width="stretch")
-        st.caption("Versión 1.1 - Febrero 2026")
+        st.caption("v1.1 - Feb 2026")
 
     #
     # GLOBAL SEED CONFIG
     #
-    st.session_state.global_sim_seed = st.number_input(
-        label="Semilla",
-        min_value=0,
-        max_value=999_999,
-        step=1,
-        format="%d",
-    )
+    st.header("Configuración Semilla Global")
+    with st.container():
+        st.session_state.global_sim_seed = st.number_input(
+            label="Semilla",
+            min_value=0,
+            max_value=999_999,
+            step=1,
+            format="%d",
+        )
+
     toggle_global_seed = st.toggle(label="Fijar semilla", value=False, width="stretch")
     if toggle_global_seed:
         fix_seed(st.session_state.global_sim_seed)
-    with st.expander(label="Información Semilla Global", expanded=False):
+    with st.expander(label="Información", expanded=False):
         st.caption(
             body=(
-            "El valor global de la semilla aleatoria es el punto de partida del generador de números aleatorios utilizado en las simulaciones. "
-            "Este valor garantiza que las simulaciones puedan replicarse exactamente, obteniendo los mismos resultados en cada ejecución."
+                "El valor global de la semilla aleatoria es el punto de partida del generador de números aleatorios utilizado en las simulaciones. "
+                "Este valor garantiza que las simulaciones puedan replicarse exactamente, obteniendo los mismos resultados en cada ejecución."
             ),
             width="stretch",
         )
 
-    st.divider()
-
     #
     # THEME CONFIG
     #
-    st.subheader("Tema")
+    st.header("Tema")
 
     current_theme_is_dark = st.session_state.get("theme_preference", "light") == "dark"
     theme_toggle = st.toggle(
@@ -156,11 +157,9 @@ with st.sidebar:
         value=current_theme_is_dark,
     )
     new_theme = "dark" if theme_toggle else "light"
+
     if new_theme != st.session_state.get("theme_preference", "light"):
         set_theme(new_theme)
-
-    st.divider()
-
 
 ########
 # TABS #
@@ -206,12 +205,19 @@ with simulation_tab:
     with pac_col1:
         st.header("Paciente")
     with pac_col2:
-        col1, col2 = st.columns(spec=[1, 2], gap="small", border=False)
+        col1, col2, col3 = st.columns(
+            spec=[1, 1, 3], gap="small", border=False, vertical_alignment="bottom"
+        )
         with col1:
             nuevo_paciente = st.button("Nuevo paciente", use_container_width=True)
             if nuevo_paciente:
                 st.session_state.patient_id = generate_id()
         with col2:
+            st.markdown(
+                f"**ID Paciente:** {st.session_state.patient_id}",
+                unsafe_allow_html=True,
+            )
+        with col3:
             st.session_state.patient_id = st.text_input(
                 label="ID Paciente",
                 value=st.session_state.patient_id,
@@ -220,12 +226,16 @@ with simulation_tab:
                 label_visibility="collapsed",
             )
 
+    # PATIENT DATA INPUTS
     with st.container(border=True):
         with st.container(border=False):
             row1 = st.columns(spec=6)
             with row1[0]:
                 age_input: int = st.number_input(
-                    label="Edad", min_value=AGE_MIN, max_value=AGE_MAX, value=AGE_DEFAULT
+                    label="Edad",
+                    min_value=AGE_MIN,
+                    max_value=AGE_MAX,
+                    value=AGE_DEFAULT,
                 )
             with row1[1]:
                 percent_input = st.number_input(
@@ -272,28 +282,28 @@ with simulation_tab:
             row2 = st.columns(spec=6)
             with row2[0]:
                 diag_ing1_option: str = st.selectbox(
-                    label="Diagnóstico Ing. 1",
+                    label="Diag. Ingreso 1",
                     options=tuple(PREUCI_DIAG.values()),
                     index=0,
                     key="diag-ing-1",
                 )
             with row2[1]:
                 diag_ing2_option: str = st.selectbox(
-                    label="Diagnóstico Ing. 2",
+                    label="Diag. Ingreso 2",
                     options=tuple(PREUCI_DIAG.values()),
                     index=0,
                     key="diag-ing-2",
                 )
             with row2[2]:
                 diag_ing3_option: str = st.selectbox(
-                    label="Diagnóstico Ing. 3",
+                    label="Diag. Ingreso 3",
                     options=tuple(PREUCI_DIAG.values()),
                     index=0,
                     key="diag-ing-3",
                 )
             with row2[3]:
                 diag_ing4_option: str = st.selectbox(
-                    label="Diagnóstico Ing. 4",
+                    label="Diag. Ingreso 4",
                     options=tuple(PREUCI_DIAG.values()),
                     index=0,
                     key="diag-ing-4",
@@ -301,22 +311,25 @@ with simulation_tab:
             with row2[4]:
                 # Additional selectboxes
                 resp_insuf_option: str = st.selectbox(
-                    label="Tipo de Insuficiencia Respiratoria",
+                    label="Insuficiencia Respiratoria",
                     options=tuple(RESP_INSUF.values()),
                     index=1,
                 )
             with row2[5]:
                 vent_type_option: str = st.selectbox(
-                    label="Tipo de Ventilación Artificial",
+                    label="Ventilación Artificial",
                     options=tuple(VENTILATION_TYPE.values()),
                 )
 
-    diag_egreso2_option: str = st.selectbox(
-        label="Diagnóstico Egreso 2",
-        options=tuple(PREUCI_DIAG.values()),
-        index=0,
-        key="diag-egreso-2",
-    )
+        with st.container(border=False):
+            row3 = st.columns(spec=1)
+            with row3[0]:
+                diag_egreso2_option: str = st.selectbox(
+                    label="Diagnóstico Egreso 2",
+                    options=tuple(PREUCI_DIAG.values()),
+                    index=0,
+                    key="diag-egreso-2",
+                )
 
     # Collected patient data (these are the input values to be processed).
     age: int = age_input
@@ -331,8 +344,6 @@ with simulation_tab:
     uti_stay: int = estad_uti_input
     preuti_stay: int = preuti_stay_input
     resp_insuf: int = int(key_categ("insuf", resp_insuf_option))
-
-    st.divider()
 
     ##############
     # Simulation #
@@ -394,7 +405,7 @@ with simulation_tab:
 
         if toggle_format:
             display_df = format_time_columns(
-                df_simulacion, exclude_rows=["Métrica de Calibración"]
+                df_simulacion, exclude_rows=["Métricas del Modelo"]
             )
         else:
             display_df = df_simulacion
@@ -559,7 +570,9 @@ with simulation_tab:
                 #
                 # Save results (local project storage).
                 #
-                path_base = f"docs\\experiments\\paciente-id-{st.session_state.patient_id}"
+                path_base = (
+                    f"docs\\experiments\\paciente-id-{st.session_state.patient_id}"
+                )
                 if not os.path.exists(path_base):
                     os.makedirs(path_base)
                 fecha: str = datetime.now().strftime("%d-%m-%Y")
@@ -582,7 +595,7 @@ with real_data_tab:
     # Validation #
     ##############
     one_patient_data_validation_tab, sim_model_validation_tab = st.tabs(
-        tabs=("Datos Reales", "Métricas del Modelo"), width="stretch"
+        tabs=("Datos Reales", "Métricas"), width="stretch"
     )
 
     df_true_data = pd.read_csv(FICHERODEDATOS_CSV_PATH)
@@ -878,7 +891,7 @@ with comparisons_tab:
         df_experiment1: DataFrame = pd.DataFrame()
         df_experiment2: DataFrame = pd.DataFrame()
 
-        with st.container():
+        with st.container(border=True):
             col1, col2 = st.columns(2)
             with col1:
                 file_upl1 = st.file_uploader(
@@ -914,11 +927,13 @@ with comparisons_tab:
                             use_container_width=True,
                             hide_index=True,
                         )
-        col_comparison_selectbox = st.selectbox(
-            "Seleccione una columna para comparar",
-            EXP_VARIABLES,
-            key="col-comparison-wilcoxon",
-        )
+
+            col_comparison_selectbox = st.selectbox(
+                "Seleccione una columna para comparar",
+                EXP_VARIABLES,
+                key="col-comparison-wilcoxon",
+            )
+
         comparison_btn = st.button(
             "Realizar prueba de Wilcoxon",
             type="primary",
@@ -927,7 +942,7 @@ with comparisons_tab:
         )
 
         # Wilcoxon comparison.
-        with st.container():
+        with st.container(border=True):
             if comparison_btn:
                 if df_experiment1.empty or df_experiment2.empty:
                     st.warning(
@@ -987,7 +1002,7 @@ with comparisons_tab:
         experiment_dataframes: list[DataFrame] = []
 
         # File Uploader.
-        with st.container():
+        with st.container(border=True):
             experiments_file_upl = st.file_uploader(
                 label="Experimentos", type=[".csv"], accept_multiple_files=True
             )
@@ -995,11 +1010,23 @@ with comparisons_tab:
                 _dfs = bin_to_df(experiments_file_upl)
                 experiment_dataframes = _dfs if isinstance(_dfs, list) else [_dfs]
 
-        col_comparison_selectbox = st.selectbox(
-            "Seleccione una columna para comparar",
-            EXP_VARIABLES,
-            key="col-comparison-friedman",
-        )
+            with st.expander("Previsualización", expanded=False):
+                for idx, df in enumerate(experiment_dataframes):
+                    if not df.empty:
+                        st.markdown(f"**Experimento {idx + 1}**")
+                        st.dataframe(
+                            df,
+                            height=200,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+            col_comparison_selectbox = st.selectbox(
+                "Seleccione una columna para comparar",
+                EXP_VARIABLES,
+                key="col-comparison-friedman",
+            )
+
         comparison_btn = st.button(
             "Realizar prueba de Friedman",
             type="primary",
@@ -1007,7 +1034,7 @@ with comparisons_tab:
             key="btn-comparison-friedman",
         )
 
-        with st.container():
+        with st.container(border=True):
             if comparison_btn:
                 if len(experiments_file_upl) == 0:
                     st.warning(
@@ -1070,7 +1097,7 @@ with comparisons_tab:
                         except Exception as data:
                             st.exception(data)
     with info_tab:
-        
+
         tab_es, tab_en = st.tabs(["Español", "English"])
 
         with tab_es:

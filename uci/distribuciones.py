@@ -1,156 +1,189 @@
+"""Distribution sampling and clustering for ICU simulation.
+
+Provides probability-distribution samplers for each cluster and a
+nearest-centroid classifier used to assign patients to clusters.
+
+Each sampler returns a **plain Python float** so that downstream code
+never needs to unpack numpy arrays.
+"""
+
+from __future__ import annotations
+
+import logging
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import os
 
 from utils.constants import DFCENTROIDES_CSV_PATH, EXPERIMENT_VARIABLES_FROM_CSV
 
-# Module-level debug switch. Set environment variable UCI_DISTRIB_DEBUG=1 to enable verbose sampling logs.
-DEBUG = bool(os.environ.get("UCI_DISTRIB_DEBUG", "0") in ("1", "true", "True"))
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+_N_FEATURES: int = len(EXPERIMENT_VARIABLES_FROM_CSV)
+"""Number of features expected by the clustering function."""
 
 
-# Distribuciones para las variables del cluster 0
-def tiemp_VAM_cluster0():
-    lambda_dist = 1 / 113.508
-    value = stats.expon.rvs(scale=1 / lambda_dist)
-    if DEBUG:
-        print(f"tiemp_VAM_cluster0: expon scale={1 / lambda_dist:.3f} draw={float(value):.3f}")
+def _sample_exponential(mean: float) -> float:
+    """Draw a single value from an exponential distribution with given *mean*."""
+    value: float = float(stats.expon.rvs(scale=mean))
+    logger.debug("exponential sample: mean=%.3f draw=%.3f", mean, value)
     return value
 
 
-def tiemp_postUCI_cluster0():
-    xk = np.array([1, 2, 3])
-    pk = np.array([0.6, 0.3, 0.1])
-
-    custom_dist = stats.rv_discrete(name="custom", values=(xk, pk))
-    random_numbers = custom_dist.rvs(size=1)
-
-    if 1 in random_numbers:
-        value = stats.uniform.rvs(loc=0, scale=168, size=1)
-        if DEBUG:
-            print(f"tiemp_postUCI_cluster0: branch=1 loc=0 scale=168 draw={float(value):.3f}")
-        return value
-    elif 2 in random_numbers:
-        value = stats.uniform.rvs(loc=192, scale=384, size=1)
-        if DEBUG:
-            print(f"tiemp_postUCI_cluster0: branch=2 loc=192 scale=384 draw={float(value):.3f}")
-        return value
-    elif 3 in random_numbers:
-        value = stats.uniform.rvs(loc=408, scale=648, size=1)
-        if DEBUG:
-            print(f"tiemp_postUCI_cluster0: branch=3 loc=408 scale=648 draw={float(value):.3f}")
-        return value
-
-
-def estad_UTI_cluster0():
-    forma = 1.37958
-    escala = 262.212
-    weibull_dist = stats.weibull_min(forma, scale=escala)
-    value = weibull_dist.rvs(size=1)
-    if DEBUG:
-        print(f"estad_UTI_cluster0: weibull shape={forma} scale={escala} draw={float(value):.3f}")
+def _sample_weibull(shape: float, scale: float) -> float:
+    """Draw a single value from a Weibull-minimum distribution."""
+    value: float = float(stats.weibull_min.rvs(shape, scale=scale))
+    logger.debug("weibull sample: shape=%.3f scale=%.3f draw=%.3f", shape, scale, value)
     return value
 
 
-# Distribuciones para las variables del cluster 1
-def tiemp_VAM_cluster1():
-    lambda_dist = 1 / 200
-    value = stats.expon.rvs(scale=1 / lambda_dist)
-    if DEBUG:
-        print(f"tiemp_VAM_cluster1: expon scale={1 / lambda_dist:.3f} draw={float(value):.3f}")
+# ---------------------------------------------------------------------------
+# Cluster 0 distributions
+# ---------------------------------------------------------------------------
+
+
+def tiemp_VAM_cluster0() -> float:
+    """VAM time for cluster 0 — Exponential"""
+
+    return _sample_exponential(mean=113.508)
+
+
+def tiemp_postUCI_cluster0() -> float:
+    """Post-ICU time for cluster 0 — mixture of three uniform ranges.
+
+    A discrete selector chooses one of three branches with probabilities
+    (0.6, 0.3, 0.1), each mapping to a different Uniform interval.
+    """
+
+    branch_values = np.array([1, 2, 3])
+    branch_probs = np.array([0.6, 0.3, 0.1])
+
+    branch_dist = stats.rv_discrete(name="branch_selector", values=(branch_values, branch_probs))
+    branch: int = int(branch_dist.rvs())
+
+    # (loc, scale) pairs per branch — scale = upper - loc for scipy.uniform
+    branch_params: dict[int, tuple[float, float]] = {
+        1: (0.0, 168.0),
+        2: (192.0, 384.0),
+        3: (408.0, 648.0),
+    }
+
+    loc, scale = branch_params[branch]
+    value: float = float(stats.uniform.rvs(loc=loc, scale=scale))
+    logger.debug("tiemp_postUCI_cluster0: branch=%d loc=%.1f scale=%.1f draw=%.3f", branch, loc, scale, value)
+
     return value
 
 
-def tiemp_postUCI_clustet1():
-    forma = 3.63023
-    escala = 1214.29
-    weibull_dist = stats.weibull_min(forma, scale=escala)
-    value = weibull_dist.rvs(size=1)
-    if DEBUG:
-        print(f"tiemp_postUCI_clustet1: weibull shape={forma} scale={escala} draw={float(value):.3f}")
-    return value
+def estad_UTI_cluster0() -> float:
+    """UTI stay for cluster 0 — Weibull"""
+
+    return _sample_weibull(shape=1.37958, scale=262.212)
 
 
-def estad_UTI_cluster1():
-    forma = 1.57768
-    escala = 472.866
-    weibull_dist = stats.weibull_min(forma, scale=escala)
-    value = weibull_dist.rvs(size=1)
-    if DEBUG:
-        print(f"estad_UTI_cluster1: weibull shape={forma} scale={escala} draw={float(value):.3f}")
-    return value
+# ---------------------------------------------------------------------------
+# Cluster 1 distributions
+# ---------------------------------------------------------------------------
 
 
-# Seleccion de cluster
-def clustering(
-    Edad,
-    Diag_Ing1,
-    Diag_Ing2,
-    Diag_Ing3,
-    Diag_Ing4,
-    APACHE,
-    InsufResp,
-    va,
-    EstadiaUTI,
-    TiempoVAM,
-    Est_PreUCI,
-) -> np.intp:
-    va_g = 1
-    if va == 2 or va == 3:
-        va_g = 2
+def tiemp_VAM_cluster1() -> float:
+    """VAM time for cluster 1 — Exponential"""
 
-    df_centroid = pd.read_csv(DFCENTROIDES_CSV_PATH)
-    nueva_instancia = np.array(
-        [
-            Edad,
-            Diag_Ing1,
-            Diag_Ing2,
-            Diag_Ing3,
-            Diag_Ing4,
-            APACHE,
-            InsufResp,
-            va,
-            va_g,
-            EstadiaUTI,
-            TiempoVAM,
-            Est_PreUCI,
-        ]
-    )
-    # Compute row-wise Euclidean distance between the new instance and each centroid.
-    # Select the first N numeric columns from the centroid file where N is the number
-    # of features expected by the clustering function (based on EXPERIMENT_VARIABLES_FROM_CSV).
-    try:
-        n_features = len(EXPERIMENT_VARIABLES_FROM_CSV)
-    except Exception:
-        n_features = 11
+    return _sample_exponential(mean=200.0)
 
-    # Select numeric columns to be robust to any index or extra columns in the CSV
-    numeric_cols = df_centroid.select_dtypes(include=[float, int]).columns.tolist()
-    if len(numeric_cols) < n_features:
-        # Fallback: use first n_features columns of the raw frame
-        centroids = df_centroid.iloc[:, 0:n_features].to_numpy(dtype=float)
+
+def tiemp_postUCI_cluster1() -> float:
+    """Post-ICU time for cluster 1 — Weibull"""
+    return _sample_weibull(shape=3.63023, scale=1214.29)
+
+
+def estad_UTI_cluster1() -> float:
+    """UTI stay for cluster 1 — Weibull"""
+    return _sample_weibull(shape=1.57768, scale=472.866)
+
+
+# ---------------------------------------------------------------------------
+# Clustering (nearest centroid)
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _load_centroids() -> np.ndarray:
+    """Load and cache the centroid matrix from the CSV file.
+
+    Only the first ``_N_FEATURES`` numeric columns are retained so the
+    matrix aligns with the feature vector built by :func:`clustering`.
+    """
+
+    df = pd.read_csv(DFCENTROIDES_CSV_PATH)
+    numeric_cols = df.select_dtypes(include=[float, int]).columns.tolist()
+
+    if len(numeric_cols) >= _N_FEATURES:
+        centroids = df[numeric_cols[:_N_FEATURES]].to_numpy(dtype=float)
     else:
-        centroids = df_centroid[numeric_cols[:n_features]].to_numpy(dtype=float)
+        centroids = df.iloc[:, :_N_FEATURES].to_numpy(dtype=float)
 
-    feat = nueva_instancia.reshape(1, -1).astype(float)
-    # If shapes don't align (defensive), trim or pad
-    if centroids.shape[1] != feat.shape[1]:
-        minc = min(centroids.shape[1], feat.shape[1])
-        centroids = centroids[:, :minc]
-        feat = feat[:, :minc]
+    logger.debug("Loaded centroids with shape %s", centroids.shape)
 
-    diff = centroids - feat
-    distancias = np.linalg.norm(diff, axis=1)
-    cluster_predicho = int(np.argmin(distancias))
-    if DEBUG:
-        print(
-            f"clustering: features={feat.flatten().tolist()}\ncentroids_shape={centroids.shape}\ndistances={distancias.tolist()} chosen={cluster_predicho}"
-        )
-        # print chosen centroid row for inspection
-        try:
-            chosen_row = centroids[cluster_predicho].tolist()
-            print(f"clustering: chosen_centroid={chosen_row}")
-        except Exception:
-            pass
+    return centroids
 
-    return cluster_predicho
+
+def clustering(
+    edad: int,
+    diag_ing1: int,
+    diag_ing2: int,
+    diag_ing3: int,
+    diag_ing4: int,
+    apache: int,
+    insuf_resp: int,
+    va: int,
+    estadia_uti: int,
+    tiempo_vam: int,
+    est_pre_uci: int,
+) -> int:
+    """Assign a patient to a cluster via nearest-centroid classification.
+
+    Builds a feature vector from the patient parameters — including a
+    derived *va_group* feature — and returns the index of the closest
+    centroid using Euclidean distance.
+    """
+
+    va_group: int = 2 if va in (2, 3) else 1
+
+    features = np.array(
+        [
+            edad,
+            diag_ing1,
+            diag_ing2,
+            diag_ing3,
+            diag_ing4,
+            apache,
+            insuf_resp,
+            va,
+            va_group,
+            estadia_uti,
+            tiempo_vam,
+            est_pre_uci,
+        ],
+        dtype=float,
+    ).reshape(1, -1)
+
+    centroids = _load_centroids()
+
+    # Defensive alignment: trim to the smaller dimension if mismatch
+    n_cols = min(centroids.shape[1], features.shape[1])
+    distances = np.linalg.norm(centroids[:, :n_cols] - features[:, :n_cols], axis=1)
+    cluster: int = int(np.argmin(distances))
+
+    logger.debug(
+        "clustering: distances=%s  chosen=%d",
+        distances.tolist(),
+        cluster,
+    )
+
+    return cluster

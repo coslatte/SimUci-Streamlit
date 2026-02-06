@@ -1,12 +1,27 @@
+"""Experiment definition and execution for ICU simulation.
+
+Provides the :class:`Experiment` data holder and the runner functions
+:func:`single_run` and :func:`multiple_replication` that drive the
+discrete-event simulation.
+"""
+
+from __future__ import annotations
+
+import logging
+
 import pandas as pd
 import simpy
 
 from uci import distribuciones
 from uci.simulacion import Simulation
-from utils.constants import EXPERIMENT_VARIABLES_LABELS as VARIABLES_EXPERIMENTO
+from utils.constants import EXPERIMENT_VARIABLES_LABELS
+
+logger = logging.getLogger(__name__)
 
 
 class Experiment:
+    """Patient-level parameters and mutable result container for one simulation run."""
+
     def __init__(
         self,
         age: int,
@@ -21,30 +36,37 @@ class Experiment:
         vam_time: int,
         preuti_stay_time: int,
         percent: int = 10,
-    ):
-        self.edad = age
-        self.diagn1 = diagnosis_admission1
-        self.diagn2 = diagnosis_admission2
-        self.diagn3 = diagnosis_admission3
-        self.diagn4 = diagnosis_admission4
-        self.apache = apache
-        self.insuf_resp = respiratory_insufficiency
-        self.va = artificial_ventilation
-        self.estadia_uti = uti_stay
-        self.tiempo_vam = vam_time
-        self.tiempo_pre_uti = preuti_stay_time
-        self.porciento = percent
+    ) -> None:
+        self.edad: int = age
+        self.diagn1: int = diagnosis_admission1
+        self.diagn2: int = diagnosis_admission2
+        self.diagn3: int = diagnosis_admission3
+        self.diagn4: int = diagnosis_admission4
+        self.apache: int = apache
+        self.insuf_resp: int = respiratory_insufficiency
+        self.va: int = artificial_ventilation
+        self.estadia_uti: int = uti_stay
+        self.tiempo_vam: int = vam_time
+        self.tiempo_pre_uti: int = preuti_stay_time
+        self.porciento: int = percent
 
-        self.result = {}
+        self.result: dict[str, int] = {}
 
     def init_results_variables(self) -> None:
-        self.result = {valor: 0 for valor in VARIABLES_EXPERIMENTO}
-        # self.result = {"Tiempo Pre VAM": 0, "Tiempo VAM": 0, "Tiempo Post VAM": 0, "Estadia UCI": 0, "Estadia Post UCI": 0}
+        """Reset result dict with zeroes for every experiment variable."""
+
+        self.result = {var: 0 for var in EXPERIMENT_VARIABLES_LABELS}
 
 
-def single_run(experiment) -> dict[str, int]:
+# ---------------------------------------------------------------------------
+# Runner functions
+# ---------------------------------------------------------------------------
+
+
+def single_run(experiment: Experiment) -> dict[str, int]:
+    """Execute one simulation replication and return the result dict."""
+
     env = simpy.Environment()
-
     experiment.init_results_variables()
 
     cluster = distribuciones.clustering(
@@ -62,43 +84,47 @@ def single_run(experiment) -> dict[str, int]:
     )
 
     simulation = Simulation(experiment, cluster)
-
     env.process(simulation.uci(env))
     env.run()
 
-    result = experiment.result
-    return result
+    return experiment.result
 
 
-def multiple_replication(experiment: Experiment, n_reps: int = 100, as_int: bool = True) -> pd.DataFrame:
-    results: list[dict] = []
+def multiple_replication(
+    experiment: Experiment,
+    n_reps: int = 100,
+    as_int: bool = True,
+) -> pd.DataFrame:
+    """Run *n_reps* independent replications and return results as a DataFrame.
+
+    Args:
+        experiment: Configured :class:`Experiment` instance.
+        n_reps: Number of independent replications.
+        as_int: If ``True`` cast every value to ``int64``; otherwise keep ``float64``.
+
+    Returns:
+        A :class:`~pandas.DataFrame` with one row per replication.
+    """
+    results: list[dict[str, int | float]] = []
 
     for _ in range(n_reps):
-        result = single_run(experiment)
+        raw = single_run(experiment)
 
-        # Asegurarse de que todos los valores sean numéricos
-        numeric_result: dict = {}
-        for key, value in result.items():
+        row: dict[str, int | float] = {}
+        for key, value in raw.items():
             try:
                 val = float(value)
             except (ValueError, TypeError):
                 val = 0.0
-            numeric_result[key] = int(val) if as_int else float(val)
-        results.append(numeric_result)
+            row[key] = int(val) if as_int else val
+        results.append(row)
 
     df = pd.DataFrame(results)
 
-    # Verificar que no haya valores nulos
-    if df.isnull().any().any():
-        df = df.fillna(0 if as_int else 0.0)
-
-    # Asegurar tipos de columnas
-    if as_int:
-        for col in df.columns:
-            df[col] = df[col].astype("int64")
-    else:
-        for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-        df = df.fillna(0.0)
+    # Fill any unexpected NaN and enforce column types
+    df = df.fillna(0 if as_int else 0.0)
+    target_dtype = "int64" if as_int else "float64"
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce").astype(target_dtype)
 
     return df

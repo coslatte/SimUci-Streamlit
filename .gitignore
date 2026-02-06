@@ -12,7 +12,7 @@
 *.pyd
 
 # Local Experiments and Outputs
-experiments/*
+docs/experiments/*
 
 # Streamlit config
 .streamlit/*.toml

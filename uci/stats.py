@@ -1,19 +1,56 @@
+"""Statistical tests and metrics for ICU simulation validation.
+
+Classes
+-------
+Wilcoxon
+    Paired Wilcoxon signed-rank test.
+Friedman
+    Friedman chi-square test for repeated measures.
+SimulationMetrics
+    Evaluation suite comparing real patient data against simulation output
+    (coverage percentage, error margin, Kolmogorov–Smirnov, Anderson–Darling).
+StatsUtils
+    Static helpers (confidence intervals).
+"""
+
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass, field
-from typing import Sequence, TypeAlias, Union
+from typing import Any, Sequence, TypeAlias, Union
 
 import numpy as np
-from scipy.stats import friedmanchisquare, wilcoxon
+from scipy.stats import (
+    anderson_ksamp,
+    friedmanchisquare,
+    ks_2samp,
+    norm,
+    t as t_dist,
+    wilcoxon,
+)
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from utils.constants import EXPERIMENT_VARIABLES_LABELS
 
-# Types
-Metric: TypeAlias = tuple[float, ...] | dict[str, float]
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Type aliases
+# ---------------------------------------------------------------------------
+
+Metric: TypeAlias = tuple[float, ...] | dict[str, Any]
 ArrayLike1D = Union[Sequence[float], np.ndarray]
+
+
+# ---------------------------------------------------------------------------
+# Simple hypothesis tests
+# ---------------------------------------------------------------------------
 
 
 @dataclass
 class Wilcoxon:
+    """Paired Wilcoxon signed-rank test wrapper"""
+
     x: ArrayLike1D
     y: ArrayLike1D
 
@@ -21,367 +58,317 @@ class Wilcoxon:
     p_value: float = field(init=False)
 
     def test(self) -> None:
+        """Run the test and populate :attr:`statistic` and :attr:`p_value`."""
+
         res = wilcoxon(self.x, self.y)
-        self.statistic, self.p_value = res[0], res[1]
+        self.statistic = float(res.statistic)  # type: ignore[union-attr]
+        self.p_value = float(res.pvalue)  # type: ignore[union-attr]
 
 
 @dataclass
 class Friedman:
+    """Friedman chi-square test for *k* related samples."""
+
     samples: Sequence[Sequence[float]]
 
     statistic: float = 0.0
     p_value: float = 0.0
 
     def test(self) -> None:
+        """Run the test and populate :attr:`statistic` and :attr:`p_value`"""
+
         res = friedmanchisquare(*self.samples)
-        self.statistic, self.p_value = res[0], res[1]
+        self.statistic = float(res.statistic)
+        self.p_value = float(res.pvalue)
+
+
+# ---------------------------------------------------------------------------
+# Simulation evaluation metrics
+# ---------------------------------------------------------------------------
 
 
 @dataclass
 class SimulationMetrics:
+    """Compare real (true) patient data with simulation output.
+
+    After calling :meth:`evaluate`, the result attributes
+    (:attr:`coverage_percentage`, :attr:`error_margin`, etc.) are populated.
+    """
+
     true_data: np.ndarray
     simulation_data: np.ndarray
 
-    coverage_percentage: Metric = None
-    error_margin: Metric = None
-    kolmogorov_smirnov_result: Metric = None
-    anderson_darling_result: Metric = None
+    coverage_percentage: Metric | None = None
+    error_margin: Metric | None = None
+    kolmogorov_smirnov_result: Metric | None = None
+    anderson_darling_result: Metric | None = None
+
+    # ---- public API -------------------------------------------------------
 
     def evaluate(
         self,
         confidence_level: float = 0.95,
         random_state: int | None = None,
-        result_as_dict=False,
+        result_as_dict: bool = False,
     ) -> None:
-        """Runs an evaluation calculating a few metrics: coverage_percentage, error_margin, ks_test, ad_test. The test is used to validate the simulation model data output, clasing REAL_DATA vs. SIM_DATA.
+        """Run all evaluation metrics.
 
         Args:
-            confidence_level (float, optional): Confidence Level used for Confidence Interval, and later on the *coverage_percentage*. Defaults to 0.95.
-            random_state (int | None, optional): Determines if the random number generator (rng) uses a seed. This determines if the randomization values are *reproducible* or not. Defaults to None.
-            result_as_dict (bool, optional): The way each test return behaves. If True, functions will return a dictionary with the tests result and get stored in the SimulationMetric object. Defaults to False.
-
-        Returns:
-            None: No return values.
+            confidence_level: Confidence level for coverage percentage (0.80–0.95 recommended).
+            random_state: Seed for the RNG used in sampling-based tests. ``None`` for non-reproducible.
+            result_as_dict: When ``True`` individual metrics return dicts instead of tuples.
         """
 
         np.random.seed(random_state)
 
         if not 0.80 <= confidence_level <= 0.95:
-            print("NOTE: it's recommended to specify a confidence level on range 0.80 - 0.95")
+            logger.warning("Confidence level %.2f is outside the recommended 0.80–0.95 range", confidence_level)
 
         try:
-            self.coverage_percentage = self.__calculate_coverage_percentage(confidence_level=confidence_level)
-            self.error_margin = self.__calculate_error_margin(as_dict=result_as_dict)
-            self.kolmogorov_smirnov_result = self.__kolmogorov_smirnov_test(as_dict=result_as_dict)
-            self.anderson_darling_result = self.__anderson_darling_test(as_dict=result_as_dict)
+            self.coverage_percentage = self._calculate_coverage_percentage(confidence_level=confidence_level)
+            self.error_margin = self._calculate_error_margin(as_dict=result_as_dict)
+            self.kolmogorov_smirnov_result = self._ks_test(as_dict=result_as_dict)
+            self.anderson_darling_result = self._ad_test(as_dict=result_as_dict)
         except Exception:
-            import traceback
+            logger.exception("Evaluation failed")
 
-            traceback.print_exc()
+    # ---- coverage percentage ----------------------------------------------
 
-        return None
-
-    def __calculate_coverage_percentage(self, confidence_level: float = 0.95) -> dict[str, float]:
-        """Computes the amount of patients that their confidence interval are in range for each experiment variable.
+    def _calculate_coverage_percentage(self, confidence_level: float = 0.95) -> dict[str, float]:
+        """Fraction of patients whose true value falls inside the simulation CI.
 
         Args:
-            confidence_level (float, optional): Statistic confidence level. Defaults to 0.95.
+            confidence_level: Confidence level for the t-based interval.
 
         Returns:
-            dict[str, float]: Dictionary with coverage percentages for each experiment variable
+            Per-variable coverage percentages.
         """
 
-        from scipy.stats import t
-
-        # Ensure we work with numpy arrays (caller may pass pandas DataFrame)
         simulation_data = np.asarray(self.simulation_data)
-
-        # Expect a 3D simulation array: (n_patients, n_replicates, n_variables)
         if simulation_data.ndim != 3:
-            raise ValueError("simulation_data must be a 3D array of shape (n_patients, n_replicates, n_variables)")
+            raise ValueError("simulation_data must be 3-D (n_patients, n_replicates, n_variables)")
 
-        n_patients: int = simulation_data.shape[0]
-        n_replicates: int = simulation_data.shape[1]
-        n_variables: int = simulation_data.shape[2]
+        n_patients, n_replicates, n_variables = simulation_data.shape
+        td = self._coerce_true_data(n_patients, n_variables)
 
-        # Coerce and validate/adjust true_data once (be permissive and deterministic)
-        td = np.asarray(self.true_data)
+        means = np.mean(simulation_data, axis=1)
 
-        if td.ndim == 0:
-            td = np.full((n_patients, n_variables), float(td))
-        elif td.ndim == 1:
-            # If flat vector matches all values, reshape
-            if td.size == n_patients * n_variables:
-                td = td.reshape((n_patients, n_variables))
-
-            # One true value per variable -> broadcast across patients
-            elif td.size == n_variables:
-                td = np.tile(td.reshape((1, n_variables)), (n_patients, 1))
-
-            # One true value per patient -> broadcast across variables
-            elif td.size == n_patients:
-                if n_variables == 1:
-                    td = td.reshape((n_patients, 1))
-                else:
-                    print("Warning: true_data provided as length n_patients; tiling values across variables")
-                    td = np.tile(td.reshape((n_patients, 1)), (1, n_variables))
-
-            elif td.size > n_patients * n_variables:
-                print("Warning: true_data longer than needed; trimming to match simulation size")
-                td = td.ravel()[: n_patients * n_variables].reshape((n_patients, n_variables))
-
-            # Shorter than expected: best-effort resize (repeats elements)
-            else:
-                print(
-                    "Warning: true_data shorter than expected; resizing by repeating elements to match simulation shape"
-                )
-                td = np.resize(td, (n_patients, n_variables))
-        elif td.ndim == 2:
-            # If there are more rows/cols than needed, trim. If fewer rows, repeat rows.
-            rows, cols = td.shape
-
-            if rows < n_patients or cols < n_variables:
-                print(
-                    "Warning: true_data dimensions smaller than simulation; resizing by repeating elements to match shape"
-                )
-                td = np.resize(td, (n_patients, n_variables))
-            else:
-                # Trim extra rows/cols deterministically
-                td = td[:n_patients, :n_variables]
-        else:
-            # Higher dimensions are unexpected: flatten and resize
-            print("Warning: true_data has >2 dimensions; flattening and resizing to match simulation shape")
-            td = np.resize(td.ravel(), (n_patients, n_variables))
-
-        # Compute per-patient means and standard errors
-        means = np.mean(simulation_data, axis=1)  # shape (n_patients, n_variables)
-
-        coverage_percentages: dict[str, float] = {}
-
-        # Handle case with too few replicates: degenerate CI (point estimate)
         if n_replicates < 2:
-            print("Warning: fewer than 2 replicates; confidence intervals will be degenerate (no variance available).")
-            lower = means.copy()
-            upper = means.copy()
+            logger.warning("Fewer than 2 replicates — CI degenerates to the point estimate")
+            lower = upper = means
         else:
-            degrees_freedom = n_replicates - 1
-            t_value = t.ppf(1 - (1 - confidence_level) / 2, degrees_freedom)
+            t_value = t_dist.ppf(1 - (1 - confidence_level) / 2, n_replicates - 1)
+            sems = np.std(simulation_data, axis=1, ddof=1) / np.sqrt(n_replicates)
+            margin = t_value * sems
+            lower, upper = means - margin, means + margin
 
-            stds = np.std(simulation_data, axis=1, ddof=1)
-            sems = stds / np.sqrt(n_replicates)
-            margin_errors = t_value * sems
-
-            lower = means - margin_errors
-            upper = means + margin_errors
-
-        # Compute boolean matrix of whether true values are inside CIs
         in_ci = (td >= lower) & (td <= upper)
-
-        # Coverage per variable (mean over patients)
         coverage_array = in_ci.mean(axis=0) * 100
 
-        for var_idx in range(n_variables):
-            if var_idx < len(EXPERIMENT_VARIABLES_LABELS):
-                var_name = EXPERIMENT_VARIABLES_LABELS[var_idx]
-            else:
-                var_name = f"variable_{var_idx}"
-            coverage_percentages[var_name] = float(coverage_array[var_idx])
+        return {
+            self._variable_label(i): float(coverage_array[i])
+            for i in range(n_variables)
+        }
 
-        return coverage_percentages
+    # ---- error margin (RMSE / MAE / MAPE) ---------------------------------
 
-    def __calculate_error_margin(self, as_dict=False) -> Metric:
-        # Ensure numpy arrays for arithmetic operations
+    def _calculate_error_margin(self, as_dict: bool = False) -> Metric:
+        """Compute RMSE, MAE and MAPE between true data and simulation means."""
+
         true_data = np.asarray(self.true_data)
-        simulation_data = np.asarray(self.simulation_data)
+        simulation_mean = np.mean(np.asarray(self.simulation_data), axis=1)
 
-        # simulation_data: (n_patients, n_simulations, experiment_variables(5))
-        simulation_mean = np.mean(simulation_data, axis=1)
+        td = self._align_shape(true_data, simulation_mean.shape)
 
-        # Make sure true_data has the same shape as simulation_mean for metric calculations
-        td = np.asarray(true_data)
-        if td.shape != simulation_mean.shape:
-            # If total sizes match, try to reshape; otherwise resize (best-effort)
-            if td.size == simulation_mean.size:
-                try:
-                    td = td.reshape(simulation_mean.shape)
-                except Exception:
-                    td = np.resize(td, simulation_mean.shape)
-            else:
-                td = np.resize(td, simulation_mean.shape)
+        rmse = float(np.sqrt(mean_squared_error(td, simulation_mean)))
+        mae = float(mean_absolute_error(td, simulation_mean))
 
-        # Compute RMSE and MAE
-        rmse = np.sqrt(mean_squared_error(td, simulation_mean))
-        mae = mean_absolute_error(td, simulation_mean)
-
-        # Compute MAPE safely: avoid division by zero by ignoring positions where true value is zero
-        denom = td.astype(float)
-        zero_mask = denom == 0
+        zero_mask = td == 0
         if np.all(zero_mask):
             mape = float("nan")
-
-            print("MAPE: cannot compute because all true values are zero (division by zero). Returning NaN.")
+            logger.warning("MAPE undefined — all true values are zero")
         else:
-            # ignore entries where denom == 0
             with np.errstate(divide="ignore", invalid="ignore"):
-                mape_vec = np.abs((td - simulation_mean) / denom)
-                mape = np.nanmean(np.where(zero_mask, np.nan, mape_vec)) * 100
+                raw = np.abs((td - simulation_mean) / td.astype(float))
+                mape = float(np.nanmean(np.where(zero_mask, np.nan, raw)) * 100)
 
-        print(f"RMSE: {rmse:.2f}")
-        print(f"MAE: {mae:.2f}")
-        print(f"MAPE: {mape if not np.isnan(mape) else 'nan'}%")
+        logger.info("RMSE=%.2f  MAE=%.2f  MAPE=%.2f%%", rmse, mae, mape)
 
         if as_dict:
-            return {
-                "rmse": rmse,
-                "mae": mae,
-                "mape": mape,
-            }
+            return {"rmse": rmse, "mae": mae, "mape": mape}
         return (rmse, mae, mape)
 
-    def __kolmogorov_smirnov_test(self, as_dict=False) -> Metric:
-        from scipy.stats import ks_2samp
+    # ---- Kolmogorov–Smirnov -----------------------------------------------
 
-        # Ensure numpy arrays
+    def _ks_test(self, as_dict: bool = False) -> Metric:
+        """Two-sample Kolmogorov–Smirnov test (per-variable when data is 3-D)."""
+
         true_data = np.asarray(self.true_data)
         simulation_data = np.asarray(self.simulation_data)
 
-        # Handle different data shapes
         if simulation_data.ndim == 3:
-            # For 3D simulation data, compare per-variable distributions (flatten patients & replicates)
             n_vars = simulation_data.shape[2]
-            per_var = []
+            per_var: list[tuple[float, float]] = []
 
             for v in range(n_vars):
                 sim_flat = simulation_data[:, :, v].ravel()
                 true_flat = true_data[:, v].ravel() if true_data.ndim > 1 else true_data.ravel()
-
                 try:
-                    stat, p = ks_2samp(true_flat, sim_flat)
+                    ks_res = ks_2samp(true_flat, sim_flat)
+                    stat, p = float(ks_res.statistic), float(ks_res.pvalue)  # type: ignore[union-attr]
                 except Exception:
                     stat, p = float("nan"), float("nan")
-                per_var.append((float(stat), float(p)))
+                per_var.append((stat, p))
 
-            # Aggregate statistic (mean of statistics) for a quick overall indicator
-            stats_arr = np.array([s for s, _ in per_var], dtype=float)
-            pvals_arr = np.array([p for _, p in per_var], dtype=float)
+            stats_arr = np.array([s for s, _ in per_var])
+            pvals_arr = np.array([p for _, p in per_var])
             overall_stat = float(np.nanmean(stats_arr))
             overall_p = float(np.nanmean(pvals_arr))
 
-            print(f"Estadístico KS (per-variable): {per_var}")
-            print(f"Estadístico KS (overall mean): {overall_stat:.4f}")
-            print(f"Valor p de KS (overall mean): {overall_p:.4f}")
+            logger.info("KS per-variable: %s", per_var)
+            logger.info("KS overall — stat=%.4f  p=%.4f", overall_stat, overall_p)
 
             if as_dict:
-                # Use human-readable variable labels when available, fallback to var_{i}
-                per_variable_dict = {}
-                for i, (s, p) in enumerate(per_var):
-                    try:
-                        var_name = (
-                            EXPERIMENT_VARIABLES_LABELS[i] if i < len(EXPERIMENT_VARIABLES_LABELS) else f"var_{i}"
-                        )
-                    except Exception:
-                        var_name = f"var_{i}"
-                    per_variable_dict[var_name] = {"statistic": s, "p_value": p}
-
-                return {
-                    "per_variable": per_variable_dict,
-                    "overall": {"statistic": overall_stat, "p_value": overall_p},
+                per_variable_dict = {
+                    self._variable_label(i): {"statistic": s, "p_value": p}
+                    for i, (s, p) in enumerate(per_var)
                 }
-            return overall_stat, overall_p
+                return {"per_variable": per_variable_dict, "overall": {"statistic": overall_stat, "p_value": overall_p}}
+            return (overall_stat, overall_p)
         else:
-            # For 1D data (used in individual tests)
             try:
-                statistic, p_value = ks_2samp(true_data, simulation_data.flatten())
+                ks_res = ks_2samp(true_data, simulation_data.flatten())
+                stat, p = float(ks_res.statistic), float(ks_res.pvalue)  # type: ignore[union-attr]
             except Exception:
-                statistic, p_value = float("nan"), float("nan")
+                stat, p = float("nan"), float("nan")
 
-            print(f"Estadístico KS: {statistic:.4f}")
-            print(f"Valor p de KS: {p_value:.4f}")
-
+            logger.info("KS — stat=%.4f  p=%.4f", stat, p)
             if as_dict:
-                return {"statistic": float(statistic), "p_value": float(p_value)}
-            return float(statistic), float(p_value)
+                return {"statistic": stat, "p_value": p}
+            return (stat, p)
 
-    def __anderson_darling_test(self, as_dict=False) -> Metric:
-        import scipy.stats as stats
+    # ---- Anderson–Darling -------------------------------------------------
 
-        # Ensure numpy arrays
+    def _ad_test(self, as_dict: bool = False) -> Metric:
+        """Anderson–Darling *k*-sample test comparing true vs. simulated data."""
         true_data = np.asarray(self.true_data)
         simulation_data = np.asarray(self.simulation_data)
 
-        # Handle different data shapes
-        if len(simulation_data.shape) == 3:
-            # For 3D simulation data, use mean across replicates for comparison
-            sim_mean = np.mean(simulation_data, axis=1)  # Shape: (n_patients, n_variables)
-            min_size = min(len(true_data.flatten()), len(sim_mean.flatten()))
+        if simulation_data.ndim == 3:
+            sim_mean = np.mean(simulation_data, axis=1)
+            min_size = min(true_data.size, sim_mean.size)
             real_sample = np.random.choice(true_data.flatten(), min_size, replace=False)
             simulated_sample = np.random.choice(sim_mean.flatten(), min_size, replace=False)
         else:
-            # For 1D data (used in individual tests)
             min_size = min(len(true_data), len(simulation_data))
             real_sample = np.random.choice(true_data, min_size, replace=False)
             simulated_sample = np.random.choice(simulation_data, min_size, replace=False)
 
-        # Perform the Anderson-Darling k-sample test.
-        # Recent scipy versions may provide a PermutationMethod helper; call it only if present.
         try:
-            perm_cls = getattr(stats, "PermutationMethod", None)
-            if perm_cls is not None:
-                anderson_result = stats.anderson_ksamp([real_sample, simulated_sample], method=perm_cls())
-            else:
-                anderson_result = stats.anderson_ksamp([real_sample, simulated_sample])
+            try:
+                from scipy.stats import PermutationMethod
+                result = anderson_ksamp([real_sample, simulated_sample], method=PermutationMethod())
+            except ImportError:
+                result = anderson_ksamp([real_sample, simulated_sample])
+            statistic = float(result.statistic)  # type: ignore[union-attr]
+            significance = float(getattr(result, "significance_level", float("nan")))
         except Exception:
-            # If anderson_ksamp fails for any reason, return NaNs gracefully
+            logger.exception("Anderson–Darling test failed")
             statistic = float("nan")
-            significance_level = float("nan")
-        else:
-            statistic = float(anderson_result.statistic)
-            significance_level = float(getattr(anderson_result, "significance_level", float("nan")))
+            significance = float("nan")
 
-        print(f"Anderson-Darling Statistic: {statistic:.4f}")
-        print(f"Approximate Critical p-value: {significance_level:.3f}")
+        logger.info("Anderson-Darling — stat=%.4f  p≈%.3f", statistic, significance)
 
         if as_dict:
-            return {"statistic": statistic, "significance_level": significance_level}
-        return (statistic, significance_level)
+            return {"statistic": statistic, "significance_level": significance}
+        return (statistic, significance)
+
+    # ---- internal helpers -------------------------------------------------
+
+    @staticmethod
+    def _variable_label(index: int) -> str:
+        """Return a human-readable variable name for *index*."""
+        if index < len(EXPERIMENT_VARIABLES_LABELS):
+            return EXPERIMENT_VARIABLES_LABELS[index]
+        return f"variable_{index}"
+
+    @staticmethod
+    def _align_shape(arr: np.ndarray, target_shape: tuple[int, ...]) -> np.ndarray:
+        """Best-effort reshape / resize of *arr* to *target_shape*."""
+        if arr.shape == target_shape:
+            return arr
+        if arr.size == np.prod(target_shape):
+            return arr.reshape(target_shape)
+        return np.resize(arr, target_shape)
+
+    def _coerce_true_data(self, n_patients: int, n_variables: int) -> np.ndarray:
+        """Coerce :attr:`true_data` into shape ``(n_patients, n_variables)``.
+
+        Handles scalar, 1-D, 2-D and higher-dimensional inputs gracefully,
+        logging a warning whenever an implicit broadcast or trim is applied.
+        """
+        td = np.asarray(self.true_data)
+        target = (n_patients, n_variables)
+
+        if td.ndim == 0:
+            return np.full(target, float(td))
+
+        if td.ndim == 1:
+            if td.size == n_patients * n_variables:
+                return td.reshape(target)
+            if td.size == n_variables:
+                return np.tile(td.reshape(1, n_variables), (n_patients, 1))
+            if td.size == n_patients:
+                if n_variables == 1:
+                    return td.reshape(n_patients, 1)
+                logger.warning("true_data has length n_patients; tiling across variables")
+                return np.tile(td.reshape(n_patients, 1), (1, n_variables))
+            logger.warning("true_data length mismatch; resizing to (%d, %d)", *target)
+            return np.resize(td, target)
+
+        if td.ndim == 2:
+            rows, cols = td.shape
+            if rows >= n_patients and cols >= n_variables:
+                return td[:n_patients, :n_variables]
+            logger.warning("true_data smaller than expected; resizing to (%d, %d)", *target)
+            return np.resize(td, target)
+
+        logger.warning("true_data has %d dimensions; flattening and resizing", td.ndim)
+        return np.resize(td.ravel(), target)
+
+
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
 
 
 class StatsUtils:
+    """Static statistical helper methods."""
+
     @staticmethod
-    def confidenceinterval(mean, std, n, coef=0.95) -> tuple[np.ndarray[float], np.ndarray[float]]:
-        """
-        Compute confidence interval for a given mean, standard deviation and sample size.
+    def confidence_interval(
+        mean: np.ndarray,
+        std: np.ndarray,
+        n: int,
+        confidence: float = 0.95,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compute a confidence interval for the given summary statistics.
 
         Args:
-            mean (ndarray): Mean of the data.
-            std (ndarray): Standard deviation of the data.
-            n (int): Sample size.
-            coef (float, optional): Confidence level (default 0.95).
+            mean: Sample means.
+            std: Sample standard deviations.
+            n: Sample size.
+            confidence: Confidence level (default 0.95).
 
         Returns:
-            tuple[ndarray, ndarray]: Lower and upper bounds of the confidence interval.
+            ``(lower_bound, upper_bound)`` arrays.
         """
-
-        # If the standard deviation is zero, the confidence interval is the mean.
         if np.all(std == 0):
             return mean, mean
 
-        from scipy.stats import norm
-
+        z = norm.ppf(1.0 - (1.0 - confidence) / 2.0)
         sem = std / np.sqrt(n)
+        return mean - z * sem, mean + z * sem
 
-        # Use the inverse CDF (ppf) to compute the z-score for the two-sided
-        # confidence interval. This avoids calling `norm.interval`, which has
-        # changed its parameter names across SciPy versions and can raise
-        # unexpected errors. The z for two-sided CI is ppf(1 - alpha/2).
-        alpha = 1.0 - coef
-        z = norm.ppf(1.0 - alpha / 2.0)
-
-        arr_limite_inferior = mean - z * sem
-        arr_limite_superior = mean + z * sem
-
-        # print("conf_int: ", conf_int)
-        # print("arr_l_inferior: ", arr_limite_inferior)
-        # print("arr_l_superior: ", arr_limite_superior)
-
-        return arr_limite_inferior, arr_limite_superior
+    # Keep old name as alias for backward compatibility
+    confidenceinterval = confidence_interval
