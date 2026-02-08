@@ -942,7 +942,7 @@ with comparisons_tab:
         )
 
         # Wilcoxon comparison.
-        with st.container(border=True):
+        with st.container():
             if comparison_btn:
                 if df_experiment1.empty or df_experiment2.empty:
                     st.warning(
@@ -1034,7 +1034,7 @@ with comparisons_tab:
             key="btn-comparison-friedman",
         )
 
-        with st.container(border=True):
+        with st.container():
             if comparison_btn:
                 if len(experiments_file_upl) == 0:
                     st.warning(
