@@ -2,7 +2,10 @@
 
 from .limits import APACHE_MIN, APACHE_MAX
 
-# Help messages shown in several Streamlit widgets (S)
+# Help messages shown in several Streamlit widgets
+HELP_MSG_ID_PACIENTE: str = (
+    f"**Identificador** del Paciente en el sistema. Utilizado en la simulación para numerar experimentos."
+)
 HELP_MSG_APACHE: str = (
     f"Valor del APACHE (Acute Physiology and Chronic Health Evaluation) es un puntaje clínico que se usa en cuidados intensivos para medir la gravedad de un paciente crítico y estimar su riesgo de mortalidad. Un riesgo bajo sería {APACHE_MIN} y un riesgo alto sería {APACHE_MAX}."
 )

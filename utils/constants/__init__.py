@@ -71,7 +71,6 @@ from .theme import (
     SECONDARY_BACKGROUND_COLOR, 
     TEXT_COLOR,
     get_theme_config,
-    get_current_theme_colors,
 )
 
 __all__ = [
@@ -130,5 +129,4 @@ __all__ = [
     "SECONDARY_BACKGROUND_COLOR", 
     "TEXT_COLOR",
     "get_theme_config",
-    "get_current_theme_colors",
 ]

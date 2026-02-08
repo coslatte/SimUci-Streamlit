@@ -33,6 +33,7 @@ from utils.constants.limits import (
     SIM_PERCENT_DEFAULT,
 )
 from utils.constants.messages import (
+    HELP_MSG_ID_PACIENTE,
     HELP_MSG_APACHE,
     HELP_MSG_UTI_STAY,
     HELP_MSG_PREUTI_STAY,
@@ -60,11 +61,10 @@ from utils.constants.paths import (
     APP_INFO_EN_PATH,
 )
 from utils.constants.theme import (
-    get_current_theme_colors,
+    PRIMARY_COLOR,
 )
 from utils.helpers import (
     adjust_df_sizes,
-    apply_theme,
     bin_to_df,
     build_df_for_stats,
     build_df_test_result,
@@ -78,7 +78,6 @@ from utils.helpers import (
     predict,
     prepare_patient_data_for_prediction,
     run_experiment,
-    set_theme,
     simulate_true_data,
     simulate_all_true_data,
     value_is_zero,
@@ -90,24 +89,6 @@ from utils.visuals import fig_to_bytes, make_all_plots
 st.set_page_config(
     page_title="SimUci", page_icon="🏥", layout="wide", initial_sidebar_state="expanded"
 )
-
-# THEME PREFERENCE INITIALIZATION
-if "theme_preference" not in st.session_state:
-    config_path = ".streamlit/config.toml"
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        if 'base = "light"' in content:
-            st.session_state.theme_preference = "light"
-        elif 'base = "dark"' in content:
-            st.session_state.theme_preference = "dark"
-        else:
-            st.session_state.theme_preference = "light"
-    except Exception as e:
-        st.session_state.theme_preference = "light"
-        print(f"Could not read theme from config.toml: {e}")
-
-apply_theme(st.session_state.theme_preference)
 
 # SESSION STATE INITIALIZATION
 if "global_sim_seed" not in st.session_state:
@@ -145,21 +126,6 @@ with st.sidebar:
             ),
             width="stretch",
         )
-
-    #
-    # THEME CONFIG
-    #
-    st.header("Tema")
-
-    current_theme_is_dark = st.session_state.get("theme_preference", "light") == "dark"
-    theme_toggle = st.toggle(
-        label="Modo Oscuro",
-        value=current_theme_is_dark,
-    )
-    new_theme = "dark" if theme_toggle else "light"
-
-    if new_theme != st.session_state.get("theme_preference", "light"):
-        set_theme(new_theme)
 
 ########
 # TABS #
@@ -200,30 +166,26 @@ with simulation_tab:
         st.session_state.simulation_seed = 0
 
     pac_col1, pac_col2 = st.columns(
-        spec=2, gap="small", border=False, vertical_alignment="bottom"
+        spec=[1, 1], gap="small", border=False, vertical_alignment="bottom"
     )
     with pac_col1:
         st.header("Paciente")
     with pac_col2:
-        col1, col2, col3 = st.columns(
-            spec=[1, 1, 3], gap="small", border=False, vertical_alignment="bottom"
+        col1, col2 = st.columns(
+            spec=[1, 2] , gap="small", border=False, vertical_alignment="bottom"
         )
         with col1:
             nuevo_paciente = st.button("Nuevo paciente", use_container_width=True)
             if nuevo_paciente:
                 st.session_state.patient_id = generate_id()
         with col2:
-            st.markdown(
-                f"**ID Paciente:** {st.session_state.patient_id}",
-                unsafe_allow_html=True,
-            )
-        with col3:
             st.session_state.patient_id = st.text_input(
                 label="ID Paciente",
                 value=st.session_state.patient_id,
                 max_chars=10,
                 placeholder="ID Paciente",
-                label_visibility="collapsed",
+                label_visibility="visible",
+                help=HELP_MSG_ID_PACIENTE
             )
 
     # PATIENT DATA INPUTS
@@ -605,8 +567,7 @@ with real_data_tab:
         st.header("Validación con datos reales")
 
         # Get current theme colors for dynamic styling
-        current_colors = get_current_theme_colors()
-        primary_color = current_colors.get("primaryColor", "#66C5A0")
+        primary_color = PRIMARY_COLOR
 
         html_text = f'<p style="color:{primary_color};">Puede seleccionar una fila para realizar una simulación al paciente seleccionado.</p>'
         st.markdown(html_text, unsafe_allow_html=True)
