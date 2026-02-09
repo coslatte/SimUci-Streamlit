@@ -449,7 +449,8 @@ def build_df_for_stats(
             mean = df[EXP_VARS].mean()
             std = df[EXP_VARS].std()
 
-            li, ls = StatsUtils.confidenceinterval(mean.values, std.values, sample_size)
+            # Ensure sample_size is treated as int (validated >0 above). Use 'or 0' to satisfy type checker (None).
+            li, ls = StatsUtils.confidence_interval(mean.values, std.values, int(sample_size or 0))
             # Build series and coerce invalid numbers to 0 for clearer presentation in the UI.
             li_s = pd.Series(list(li), index=EXP_VARS).astype(float)
             ls_s = pd.Series(list(ls), index=EXP_VARS).astype(float)
@@ -544,10 +545,12 @@ def bin_to_df(files: UploadedFile | list[UploadedFile]) -> DataFrame | list[Data
         A DataFrame (for single file) or a list of DataFrames (for multiple files).
     """
 
-    if isinstance(files, UploadedFile):
-        return pd.read_csv(files)
-    elif isinstance(files, list):
+    if isinstance(files, list):
         return [pd.read_csv(f) for f in files]
+    elif isinstance(files, UploadedFile):
+        return pd.read_csv(files)
+    else:
+        raise TypeError(f"Expected UploadedFile or list[UploadedFile], got {type(files)}")
 
 
 def extract_true_data_from_csv(

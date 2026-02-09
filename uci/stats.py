@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 Metric: TypeAlias = tuple[float, ...] | dict[str, Any]
-ArrayLike1D = Union[Sequence[float], np.ndarray]
+ArrayLike1D = Union[Sequence[float], np.ndarray, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -347,8 +347,8 @@ class StatsUtils:
 
     @staticmethod
     def confidence_interval(
-        mean: np.ndarray,
-        std: np.ndarray,
+        mean: ArrayLike1D,
+        std: ArrayLike1D,
         n: int,
         confidence: float = 0.95,
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -363,12 +363,13 @@ class StatsUtils:
         Returns:
             ``(lower_bound, upper_bound)`` arrays.
         """
+        mean = np.asarray(mean)
+        std = np.asarray(std)
+
         if np.all(std == 0):
             return mean, mean
 
-        z = norm.ppf(1.0 - (1.0 - confidence) / 2.0)
+        t_value = t_dist.ppf(1 - (1 - confidence) / 2, n - 1)
         sem = std / np.sqrt(n)
-        return mean - z * sem, mean + z * sem
 
-    # Keep old name as alias for backward compatibility
-    confidenceinterval = confidence_interval
+        return mean - t_value * sem, mean + t_value * sem

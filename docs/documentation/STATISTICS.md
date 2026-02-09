@@ -329,8 +329,6 @@ else:
 
 ### StatsUtils.confidence_interval
 
-> **Note**: The old name `confidenceinterval` is still available as an alias for backward compatibility.
-
 ```python
 class StatsUtils:
     @staticmethod
@@ -348,9 +346,6 @@ class StatsUtils:
         
         Where z = ppf(1 - α/2) for the given confidence level.
         """
-
-    # Backward-compatible alias
-    confidenceinterval = confidence_interval
 ```
 
 **Usage**:
@@ -363,7 +358,7 @@ means = np.array([100, 50, 30])  # hours
 stds = np.array([20, 10, 8])
 n_runs = 200
 
-lower, upper = StatsUtils.confidenceinterval(means, stds, n_runs, coef=0.95)
+lower, upper = StatsUtils.confiidence_interval(means, stds, n_runs, coef=0.95)
 
 for i, (l, u) in enumerate(zip(lower, upper)):
     print(f"Variable {i}: [{l:.1f}, {u:.1f}]")

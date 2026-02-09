@@ -539,8 +539,8 @@ with simulation_tab:
                     os.makedirs(path_base)
                 fecha: str = datetime.now().strftime("%d-%m-%Y")
                 path: str = (
-                    f"{path_base}\\experimento-id {generate_id(5)} fecha {fecha} "
-                    f"corridas {st.session_state.sim_sample_size}.csv"
+                    f"{path_base}\\experimento-id-{generate_id(5)}-fecha-{fecha} "
+                    f"corridas-simulacion-{st.session_state.sim_sample_size}.csv"
                 )
                 experiment_result.to_csv(path, index=False)
                 st.session_state.df_result = experiment_result

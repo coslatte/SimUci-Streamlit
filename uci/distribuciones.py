@@ -31,14 +31,18 @@ _N_FEATURES: int = len(EXPERIMENT_VARIABLES_FROM_CSV)
 def _sample_exponential(mean: float) -> float:
     """Draw a single value from an exponential distribution with given *mean*."""
     value: float = float(stats.expon.rvs(scale=mean))
+
     logger.debug("exponential sample: mean=%.3f draw=%.3f", mean, value)
+
     return value
 
 
 def _sample_weibull(shape: float, scale: float) -> float:
     """Draw a single value from a Weibull-minimum distribution."""
     value: float = float(stats.weibull_min.rvs(shape, scale=scale))
+
     logger.debug("weibull sample: shape=%.3f scale=%.3f draw=%.3f", shape, scale, value)
+
     return value
 
 
@@ -99,11 +103,13 @@ def tiemp_VAM_cluster1() -> float:
 
 def tiemp_postUCI_cluster1() -> float:
     """Post-ICU time for cluster 1 — Weibull"""
+
     return _sample_weibull(shape=3.63023, scale=1214.29)
 
 
 def estad_UTI_cluster1() -> float:
     """UTI stay for cluster 1 — Weibull"""
+
     return _sample_weibull(shape=1.57768, scale=472.866)
 
 
