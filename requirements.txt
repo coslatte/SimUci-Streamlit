@@ -24,6 +24,7 @@ scikit-learn==1.6.1
 imbalanced-learn==0.14.0
 scipy==1.16.1
 simpy==4.1.1
+simuci==0.1.5
 streamlit==1.48.1
 tenacity==9.1.2
 threadpoolctl==3.6.0
@@ -32,7 +33,3 @@ typing_extensions==4.15.0
 tzdata==2025.2
 urllib3==2.5.0
 watchdog==6.0.0
-
-# Notes:
-# - This file contains the runtime dependencies Streamlit Cloud will install.
-# - Development-only tools and platform-specific packages were moved to requirements-dev.txt

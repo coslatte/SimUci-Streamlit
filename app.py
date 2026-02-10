@@ -7,7 +7,7 @@ import streamlit as st
 from pandas import DataFrame
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from uci.stats import Friedman, SimulationMetrics, Wilcoxon
+from simuci.stats import Friedman, SimulationMetrics, Wilcoxon
 
 from utils.constants.limits import (
     AGE_MIN,

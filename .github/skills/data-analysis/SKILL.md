@@ -16,10 +16,10 @@ description: Guidance for using Pandas, NumPy, Statistics, and Machine Learning 
     - Load constants from `utils/constants/limits.py` if filtering during load.
 
 ## 2. Statistics (SciPy & Stats models)
-- **Comparisons**: Use `uci.stats` module.
+- **Comparisons**: Use `simuci.stats` module.
     - `Friedman` test for multiple group comparisons.
     - `Wilcoxon` for paired comparisons.
-- **Distributions**: Refer to `uci.distribuciones` for random variable generation (e.g., `norm`, `expon`).
+- **Distributions**: Refer to `simuci.distribuciones` for random variable generation (e.g., `norm`, `expon`).
 
 ## 3. Machine Learning (Scikit-Learn)
 - **Pipelines**: Use `sklearn.pipeline.Pipeline` for preprocessing + modeling.

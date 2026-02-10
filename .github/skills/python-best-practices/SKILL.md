@@ -11,7 +11,7 @@ description: Core Python development standards, including type hinting, path han
 - **Imports**: Use `typing.TYPE_CHECKING` to avoid circular imports.
   ```python
   if TYPE_CHECKING:
-      from uci.experiment import Experiment
+      from simuci.experiment import Experiment
   ```
 
 ## 2. Constants & Configuration
@@ -29,7 +29,7 @@ description: Core Python development standards, including type hinting, path han
 ## 4. Testing
 - **Framework**: `pytest`.
 - **Run**: `python -m pytest` from root.
-- **Coverage**: Ensure simulation logic in `uci/` is covered by unit tests.
+- **Coverage**: Ensure simulation logic in `simuci` is covered by unit tests.
 
 ## 5. Error Handling
 - Use specific exceptions (e.g., `FileNotFoundError`, `ValueError`) rather than bare `Exception`.

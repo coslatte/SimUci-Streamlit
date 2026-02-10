@@ -941,6 +941,22 @@ wheels = [
 
 [[package]]
 name = "simuci"
+version = "0.1.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "simpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/8f/8fc628583fb86f86f37b75844388b04523043f9d37df401b79311ad8fa9b/simuci-0.1.5.tar.gz", hash = "sha256:9c24f112ae24faa34bb828b94281552ef1b4553b98b07406bd23b8d3c8e2e997", size = 62600, upload-time = "2026-02-09T18:51:25.178Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/99/f892198d1c5185a64f3c77a0a954a06f9e433aee460339e0420cc011cdca/simuci-0.1.5-py3-none-any.whl", hash = "sha256:64d3f654c149679f109bd8f0fe342954be3097d2c20fd71a021191acd213a610", size = 20703, upload-time = "2026-02-09T18:51:23.926Z" },
+]
+
+[[package]]
+name = "simuci-streamlit"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
@@ -952,6 +968,7 @@ dependencies = [
     { name = "scipy" },
     { name = "seaborn" },
     { name = "simpy" },
+    { name = "simuci" },
     { name = "streamlit" },
 ]
 
@@ -965,6 +982,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.17.0" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "simpy", specifier = ">=4.1.1" },
+    { name = "simuci", specifier = ">=0.1.5" },
     { name = "streamlit", specifier = ">=1.53.1" },
 ]
 

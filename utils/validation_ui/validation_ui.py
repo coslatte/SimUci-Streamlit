@@ -209,7 +209,7 @@ def _render_formulas_expander() -> None:
 
         st.markdown(
             "Si se desea, se puede consultar el código exacto usado para los cálculos numéricos, "
-            "revisando `uci.stats.SimulationMetrics` en el repositorio de la aplicación: "
+            "revisando `simuci.stats.SimulationMetrics` en el repositorio de la aplicación: "
             "https://github.com/IsaelPT/SimUci."
         )
 

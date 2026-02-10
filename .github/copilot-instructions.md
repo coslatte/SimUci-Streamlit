@@ -4,11 +4,12 @@ You are working on **SimUCI**, a Python simulation application for ICU patient d
 
 ## Architecture & Boundaries
 - **Frontend (UI)**: `app.py` is the monolithic entry point for the Streamlit interface. It handles layout, user input, and result visualization.
-- **Core Logic (`uci/`)**:
-  - `simulacion.py`: Contains the `Simulation` class using `simpy` for discrete-event modeling.
-  - `experiment.py`: Manages simulation runs/experiments.
-  - `distribuciones.py`: Statistical distributions source.
-  - `stats.py`: Statistical analysis helpers (Friedman, Wilcoxon).
+- **Core Logic (`simuci`)**:
+  - `simuci` is an external library found in the PyPI repository `simuci`.
+  - `simulacion`: Contains the `Simulation` class using `simpy` for discrete-event modeling.
+  - `experiment`: Manages simulation runs/experiments.
+  - `distribuciones`: Statistical distributions source.
+  - `stats`: Statistical analysis helpers (Friedman, Wilcoxon).
 - **Configuration**: Avoid magic numbers/strings in code. Use `utils/constants/` (e.g., `limits.py`, `messages.py`) for all UI labels, limits, and defaults.
 
 ## Developer Workflow
@@ -20,12 +21,12 @@ You are working on **SimUCI**, a Python simulation application for ICU patient d
 - **Language Mixed Context**:
   - **Code**: Use English for valid variable names, functions, and internal comments (e.g., `def calculate_mean()`).
   - **UI/Domain**: Use Spanish for all user-facing text, labels, and docstrings describing medical functionality (e.g., `st.title("Simulación de Pacientes")`).
-- **Type Hinting**: Use modern Python type hints (`typing.TYPE_CHECKING`, annotations) especially in `uci/` modules.
-- **Imports**: Group imports: Standard Lib -> 3rd Party (Pandas, Streamlit) -> Local (`uci`, `utils`).
+- **Type Hinting**: Use modern Python type hints (`typing.TYPE_CHECKING`, annotations) especially in `simuci` modules.
+- **Imports**: Group imports: Standard Lib -> 3rd Party (Pandas, Streamlit, simuci) -> Local (`utils`).
 - **Data Handling**: Prefer `pandas.DataFrame` for data manipulation. Data samples reside in `data/`.
 
 ## Critical Patterns
-- **Simulation**: Logic follows `simpy.Environment` patterns. Events are modeled in `uci.simulacion.Simulation`.
+- **Simulation**: Logic follows `simpy.Environment` patterns. Events are modeled in `simuci.simulacion.Simulation`.
 - **Constants**: When adding new UI elements, define text in `utils/constants/messages.py` and numeric bounds in `utils/constants/limits.py` first, then import them in `app.py`.
 - **Paths**: Use `os.path` or `pathlib` relative to project root. See `utils/helpers/helpers.py`.
 
@@ -41,7 +42,7 @@ You are working on **SimUCI**, a Python simulation application for ICU patient d
 
 ## Streamlit Best Practices
 - **Performance**: Use `@st.cache_data` for data loading and `@st.cache_resource` for loading heavy models.
-- **Structure**: Keep `app.py` clean. Move complex calculation or simulation logic to `uci/` or `utils/`.
+- **Structure**: Keep `app.py` clean. Move complex calculation or simulation logic to `simuci` or `utils/`.
 - **State**: Use `st.session_state` to manage simulation state across reruns/interactions.
 - **Feedback**: Provide user feedback (spinners, progress bars) during long-running simulations.
 

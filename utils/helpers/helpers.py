@@ -13,12 +13,13 @@ import streamlit as st
 from pandas import DataFrame
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from uci.stats import StatsUtils
+from simuci.stats import StatsUtils
 from utils.constants import (
     AGE_MIN,
 )
 from utils.constants import EXPERIMENT_VARIABLES_LABELS as EXP_VARS
 from utils.constants import (
+    DFCENTROIDES_CSV_PATH,
     FICHERODEDATOS_CSV_PATH,
     PREDICTION_MODEL_PATH,
     PREUCI_DIAG,
@@ -722,8 +723,8 @@ def run_experiment(
         ["Tiempo Pre VAM", "Tiempo VAM", "Tiempo Post VAM", "Estadia UCI", "Estadia Post UCI"].
     """
 
-    # Local import to avoid circular import between uci.experiment and uci.simulacion
-    from uci.experiment import Experiment, multiple_replication
+    # Local import to avoid circular import between simuci.experiment and simuci.simulation
+    from simuci.experiment import Experiment, multiple_replication
 
     e = Experiment(
         age=age,
@@ -745,7 +746,7 @@ def run_experiment(
         print(
             f"run_experiment: running experiment with percent={percent}, age={age}, d1={d1}, d2={d2}, d3={d3}, d4={d4}"
         )
-    res = multiple_replication(e, n_runs)
+    res = multiple_replication(e, n_runs, centroids_path=DFCENTROIDES_CSV_PATH)
 
     # Ensure all columns are numeric
     for col in res.columns:
