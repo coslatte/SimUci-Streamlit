@@ -3,6 +3,7 @@
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+import tempfile
 
 import pandas as pd
 import streamlit as st
@@ -49,7 +50,6 @@ def load_model_from_drive(key: str) -> Any:
     filename = GOOGLE_DRIVE_FILE_MAP[key].name
 
     # Download to a temporary file
-    import tempfile
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".joblib") as tmp_file:
         tmp_path = tmp_file.name
@@ -73,6 +73,9 @@ def load_model_from_drive(key: str) -> Any:
             os.unlink(tmp_path)
         except Exception as e:
             print(f"Warning: could not delete temp file {tmp_path}. Exception: {e}")
+
+
+def get_centroids_path() -> Path:
     """Ensure the centroids file exists in a temporary location for simuci.
 
     The ``simuci`` library requires a physical file path.
