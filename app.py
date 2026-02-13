@@ -46,6 +46,7 @@ from utils.constants.messages import (
     HELP_MSG_VAM_TIME,
     LABEL_TIME_FORMAT,
     LABEL_PREDICTION_METRIC,
+    ERROR_MSG_DATA_FILES_MISSING,
 )
 from utils.constants.mappings import (
     VENTILATION_TYPE,
@@ -68,6 +69,7 @@ from utils.helpers import (
     bin_to_df,
     build_df_for_stats,
     build_df_test_result,
+    ensure_drive_data_files,
     extract_true_data_from_csv,
     fix_seed,
     format_time_columns,
@@ -89,6 +91,12 @@ from utils.visuals import fig_to_bytes, make_all_plots
 st.set_page_config(
     page_title="SimUci", page_icon="🏥", layout="wide", initial_sidebar_state="expanded"
 )
+
+missing_drive_files = ensure_drive_data_files()
+if missing_drive_files:
+    missing_list = ", ".join(missing_drive_files)
+    st.error(ERROR_MSG_DATA_FILES_MISSING.format(missing_files=missing_list))
+    st.stop()
 
 # SESSION STATE INITIALIZATION
 if "global_sim_seed" not in st.session_state:

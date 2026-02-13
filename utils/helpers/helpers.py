@@ -9,6 +9,7 @@ import contextlib
 import joblib
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 from pandas import DataFrame
 from streamlit.runtime.uploaded_file_manager import UploadedFile
@@ -21,12 +22,79 @@ from utils.constants import EXPERIMENT_VARIABLES_LABELS as EXP_VARS
 from utils.constants import (
     DFCENTROIDES_CSV_PATH,
     FICHERODEDATOS_CSV_PATH,
+    GOOGLE_DRIVE_FILE_MAP,
     PREDICTION_MODEL_PATH,
     PREUCI_DIAG,
     RESP_INSUF,
     SIM_RUNS_DEFAULT,
     VENTILATION_TYPE,
 )
+
+_GOOGLE_DRIVE_DOWNLOAD_URL = "https://drive.google.com/uc?export=download&id={file_id}"
+
+
+def ensure_drive_data_files() -> list[str]:
+    """Ensure required data files exist locally, downloading from Google Drive if needed.
+
+    Download strategy (in order of priority):
+
+    1. File already exists locally → skip.
+    2. **Google Drive API** via service account (secure, recommended).
+    3. **Direct download URL** via per-file IDs in secrets (legacy fallback).
+    4. None of the above → report as missing.
+
+    Returns:
+        A list with the keys of files that could not be resolved or downloaded.
+    """
+    from utils.services.google_drive import get_drive_service
+
+    missing_files: list[str] = []
+
+    # Strategy 2: Google Drive API (service account) — preferred
+    drive_service = get_drive_service()
+    folder_id: str | None = st.secrets.get("google_drive", {}).get("folder_id")
+
+    # Strategy 3 (legacy): direct download with per-file IDs
+    drive_file_ids: dict[str, str] = st.secrets.get("google_drive_files", {})
+
+    for key, local_path in GOOGLE_DRIVE_FILE_MAP.items():
+        # Strategy 1: file already present locally
+        if local_path.exists():
+            continue
+
+        downloaded = False
+
+        # Strategy 2: Google Drive API (service account)
+        if drive_service and folder_id:
+            try:
+                result = drive_service.download_file_by_name(
+                    folder_id, local_path.name, local_path
+                )
+                if result:
+                    downloaded = True
+            except Exception:
+                pass  # fall through to legacy strategy
+
+        # Strategy 3: legacy direct URL
+        if not downloaded:
+            file_id = drive_file_ids.get(key)
+            if file_id:
+                try:
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    download_url = _GOOGLE_DRIVE_DOWNLOAD_URL.format(file_id=file_id)
+                    response = requests.get(download_url, timeout=30)
+                    response.raise_for_status()
+                    content_type = response.headers.get("Content-Type", "")
+                    if "text/html" not in content_type:
+                        local_path.write_bytes(response.content)
+                        downloaded = True
+                except requests.RequestException:
+                    pass
+
+        if not downloaded:
+            missing_files.append(key)
+
+    return missing_files
 
 
 def key_categ(category: str, value: str | int, viceversa: bool = False) -> int | str:

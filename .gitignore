@@ -17,6 +17,9 @@ venv-*/
 # Local Experiments and Outputs
 docs/experiments/*
 
+# Local data files (keep out of GitHub)
+data/*.csv
+
 # Streamlit config
 .streamlit/*.toml
 

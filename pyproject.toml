@@ -14,5 +14,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "simpy>=4.1.1",
     "streamlit>=1.53.1",
-    "simuci >=0.1.5",
+    "simuci>=1.0.1",
+    "google-api-python-client>=2.164.0",
+    "google-auth>=2.38.0",
 ]

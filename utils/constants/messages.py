@@ -38,3 +38,8 @@ HELP_MSG_VAM_TIME: str = "Tiempo en Ventilación Asistida Mecánica (VAM) en **h
 # Labels
 LABEL_TIME_FORMAT = "Tiempo en días"
 LABEL_PREDICTION_METRIC = "Predicción de fallecimiento del paciente seleccionado"
+
+ERROR_MSG_DATA_FILES_MISSING: str = (
+    "No se encontraron archivos de datos requeridos: {missing_files}. "
+    "Configura los IDs en secrets.toml (google_drive_files) o sube los archivos al servidor."
+)
