@@ -3,98 +3,36 @@ import secrets
 import sys
 import traceback
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import Any, List, Tuple, Union, cast
 import contextlib
 
 import joblib
 import numpy as np
 import pandas as pd
-import requests
 import streamlit as st
 from pandas import DataFrame
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from simuci.stats import StatsUtils
+from simuci import StatsUtils
 from utils.constants import (
     AGE_MIN,
+    AGE_MAX,
+    APACHE_MIN,
+    APACHE_MAX,
+    UTI_STAY_MAX,
+    PREUTI_STAY_MAX,
+    VAM_T_MIN,
+    VAM_T_MAX,
 )
 from utils.constants import EXPERIMENT_VARIABLES_LABELS as EXP_VARS
 from utils.constants import (
-    DFCENTROIDES_CSV_PATH,
     FICHERODEDATOS_CSV_PATH,
-    GOOGLE_DRIVE_FILE_MAP,
     PREDICTION_MODEL_PATH,
     PREUCI_DIAG,
     RESP_INSUF,
     SIM_RUNS_DEFAULT,
     VENTILATION_TYPE,
 )
-
-_GOOGLE_DRIVE_DOWNLOAD_URL = "https://drive.google.com/uc?export=download&id={file_id}"
-
-
-def ensure_drive_data_files() -> list[str]:
-    """Ensure required data files exist locally, downloading from Google Drive if needed.
-
-    Download strategy (in order of priority):
-
-    1. File already exists locally → skip.
-    2. **Google Drive API** via service account (secure, recommended).
-    3. **Direct download URL** via per-file IDs in secrets (legacy fallback).
-    4. None of the above → report as missing.
-
-    Returns:
-        A list with the keys of files that could not be resolved or downloaded.
-    """
-    from utils.services.google_drive import get_drive_service
-
-    missing_files: list[str] = []
-
-    # Strategy 2: Google Drive API (service account) — preferred
-    drive_service = get_drive_service()
-    folder_id: str | None = st.secrets.get("google_drive", {}).get("folder_id")
-
-    # Strategy 3 (legacy): direct download with per-file IDs
-    drive_file_ids: dict[str, str] = st.secrets.get("google_drive_files", {})
-
-    for key, local_path in GOOGLE_DRIVE_FILE_MAP.items():
-        # Strategy 1: file already present locally
-        if local_path.exists():
-            continue
-
-        downloaded = False
-
-        # Strategy 2: Google Drive API (service account)
-        if drive_service and folder_id:
-            try:
-                result = drive_service.download_file_by_name(
-                    folder_id, local_path.name, local_path
-                )
-                if result:
-                    downloaded = True
-            except Exception:
-                pass  # fall through to legacy strategy
-
-        # Strategy 3: legacy direct URL
-        if not downloaded:
-            file_id = drive_file_ids.get(key)
-            if file_id:
-                try:
-                    local_path.parent.mkdir(parents=True, exist_ok=True)
-                    download_url = _GOOGLE_DRIVE_DOWNLOAD_URL.format(file_id=file_id)
-                    response = requests.get(download_url, timeout=30)
-                    response.raise_for_status()
-                    content_type = response.headers.get("Content-Type", "")
-                    if "text/html" not in content_type:
-                        local_path.write_bytes(response.content)
-                        downloaded = True
-                except requests.RequestException:
-                    pass
-
-        if not downloaded:
-            missing_files.append(key)
-
-    return missing_files
 
 
 def key_categ(category: str, value: str | int, viceversa: bool = False) -> int | str:
@@ -104,8 +42,7 @@ def key_categ(category: str, value: str | int, viceversa: bool = False) -> int |
     Args:
         category: One of the category identifiers: "va", "diag" or "insuf".
         value: The value to look up (or the key to look up if `viceversa` is True).
-        viceversa: If False (default) the function searches for the key that maps to `value`.
-                   If True the function treats `value` as a key and returns its mapped value.
+        viceversa: If False (default) the function searches for the key that maps to `value`. If True the function treats `value` as a key and returns its mapped value.
 
     Returns:
         The matching key (int) when searching by value, or the matching value (str) when
@@ -135,9 +72,13 @@ def key_categ(category: str, value: str | int, viceversa: bool = False) -> int |
                 return v
 
     if not viceversa:
-        raise Exception(f"The provided value was not found in the category set: {category}.")
+        raise Exception(
+            f"The provided value was not found in the category set: {category}."
+        )
     else:
-        raise Exception(f"The provided key was not found in the category set: {category}.")
+        raise Exception(
+            f"The provided key was not found in the category set: {category}."
+        )
 
 
 def value_is_zero(values: list[int | str] | int | str) -> bool:
@@ -177,7 +118,9 @@ def generate_id(digits: int = 10) -> str:
     """
 
     if not 0 < digits <= 10:
-        raise Exception(f"The number of digits n={digits} must be in the range 0 < n <= 10.")
+        raise Exception(
+            f"The number of digits n={digits} must be in the range 0 < n <= 10."
+        )
     # Use randbelow(10) to generate each digit (0-9)
     return "".join([str(secrets.randbelow(10)) for _ in range(digits)])
 
@@ -271,38 +214,50 @@ def format_time_columns(
 
         # If there is an 'Información' column, find rows to exclude
         if has_info_column:
-            for idx in result_df.index:
+            col_pos = result_df.columns.get_indexer(pd.Index([col]))[0]
+            info_col_pos = result_df.columns.get_indexer(pd.Index(["Información"]))[0]
+            
+            for i, idx in enumerate(result_df.index):
                 # Check whether the current row is in the exclusion list
-                if result_df.at[idx, "Información"] not in exclude_rows:
+                if result_df.iat[i, info_col_pos] not in exclude_rows:
                     try:
-                        value = result_df.at[idx, col]
+                        value = result_df.iat[i, col_pos]
                         if pd.notna(value):
                             try:
                                 # Convert to string to avoid type issues
-                                formatted_col.at[idx] = format_value_for_display(float(value))  # type: ignore[arg-type]
+                                formatted_col.iat[i] = format_value_for_display(float(cast(Any, value)))
                             except (ValueError, TypeError) as e:
                                 print(
-                                    f"Error formatting value {value} in column '{col}', row {idx} (Información: {result_df.at[idx, 'Información']}): {str(e)}"
+                                    f"Error formatting value {value} in column '{col}', row {idx} (Información: {result_df.iat[i, info_col_pos]}): {str(e)}"
                                 )
                     except Exception as e:
-                        print(f"Unexpected error accessing data in column '{col}', row {idx}: {str(e)}")
+                        print(
+                            f"Unexpected error accessing data in column '{col}', row {idx}: {str(e)}"
+                        )
         # If there is no 'Información' column but the index name is 'Información'
         elif result_df.index.name == "Información":
-            for idx in result_df.index:
+            col_pos = result_df.columns.get_indexer(pd.Index([col]))[0]
+            for i, idx in enumerate(result_df.index):
                 if idx not in exclude_rows:
                     try:
-                        value = result_df.at[idx, col]
+                        value = result_df.iat[i, col_pos]
                         if pd.notna(value):
                             try:
                                 # Convert to string to avoid type issues
-                                formatted_col.at[idx] = format_value_for_display(float(value))  # type: ignore[arg-type]
+                                formatted_col.iat[i] = format_value_for_display(float(cast(Any, value)))
                             except (ValueError, TypeError) as e:
-                                print(f"Error formatting value {value} in column '{col}', index '{idx}': {str(e)}")
+                                print(
+                                    f"Error formatting value {value} in column '{col}', index '{idx}': {str(e)}"
+                                )
                     except Exception as e:
-                        print(f"Unexpected error accessing data in column '{col}', index '{idx}': {str(e)}")
+                        print(
+                            f"Unexpected error accessing data in column '{col}', index '{idx}': {str(e)}"
+                        )
         else:
             # Para DataFrames normales, formatear todas las filas
-            formatted_col = result_df[col].apply(lambda x: format_value_for_display(float(x)) if pd.notna(x) else x)  # type: ignore[arg-type]
+            formatted_col = result_df[col].apply(
+                lambda x: format_value_for_display(float(x)) if pd.notna(x) else x
+            )
 
         # Assign the formatted column back, converting everything to string to avoid ArrowTypeError
         result_df[col] = formatted_col.astype(str)
@@ -435,7 +390,9 @@ def build_df_for_stats(
 
     # Minimal validations.
     if include_confint and (not include_mean or not include_std):
-        raise ValueError("Calculating confidence intervals requires include_mean=True and include_std=True.")
+        raise ValueError(
+            "Calculating confidence intervals requires include_mean=True and include_std=True."
+        )
     if include_confint and (sample_size is None or sample_size <= 0):
         raise ValueError("`sample_size` must be > 0 when include_confint=True.")
 
@@ -453,7 +410,9 @@ def build_df_for_stats(
 
         if include_info_label:
             # If explicit labels are provided, they are applied; otherwise format_df_stats will fill 'Patient i'
-            df_output = format_df_stats(df_output, column_label=column_label, labels_structure=labels_structure)
+            df_output = format_df_stats(
+                df_output, column_label=column_label, labels_structure=labels_structure
+            )
 
         # Post-process: when confidence intervals were requested, ensure that for any
         # experiment variable whose mean ('Promedio') is zero, the Límite Inf/Sup rows
@@ -513,13 +472,15 @@ def build_df_for_stats(
         # Initialize to avoid possibly unbound errors
         li_s: pd.Series = pd.Series(dtype=float)
         ls_s: pd.Series = pd.Series(dtype=float)
-        
+
         if include_confint:
             mean = df[EXP_VARS].mean()
             std = df[EXP_VARS].std()
 
             # Ensure sample_size is treated as int (validated >0 above). Use 'or 0' to satisfy type checker (None).
-            li, ls = StatsUtils.confidence_interval(mean.values, std.values, int(sample_size or 0))
+            li, ls = StatsUtils.confidence_interval(
+                mean.values, std.values, int(sample_size or 0)
+            )
             # Build series and coerce invalid numbers to 0 for clearer presentation in the UI.
             li_s = pd.Series(list(li), index=EXP_VARS).astype(float)
             ls_s = pd.Series(list(ls), index=EXP_VARS).astype(float)
@@ -551,7 +512,9 @@ def build_df_for_stats(
 
                         if metrics_reference is not None:
                             # If metrics_reference has a scalar for the column -> 0/1 if it lies within the interval
-                            if isinstance(metrics_reference, pd.Series) or isinstance(metrics_reference, dict):
+                            if isinstance(metrics_reference, pd.Series) or isinstance(
+                                metrics_reference, dict
+                            ):
                                 ref_val = (
                                     metrics_reference.get(col)
                                     if isinstance(metrics_reference, dict)
@@ -566,9 +529,13 @@ def build_df_for_stats(
                                 counts[col] = 0
                         else:
                             # Count rows in the original DataFrame that are inside the interval
-                            counts[col] = int(((df[col] >= lower) & (df[col] <= upper)).sum())
+                            counts[col] = int(
+                                ((df[col] >= lower) & (df[col] <= upper)).sum()
+                            )
 
-                    metrics_row = pd.Series([counts.get(col, 0) for col in EXP_VARS], index=EXP_VARS)
+                    metrics_row = pd.Series(
+                        [counts.get(col, 0) for col in EXP_VARS], index=EXP_VARS
+                    )
 
                     # If percentage is requested and we work with iteration counts
                     if metrics_as_percentage and metrics_reference is None:
@@ -589,14 +556,20 @@ def build_df_for_stats(
             auto_labels.append("Calibration Metric")
 
         if not rows:
-            raise ValueError("At least one statistic must be included (mean/std/confint/metrics).")
+            raise ValueError(
+                "At least one statistic must be included (mean/std/confint/metrics)."
+            )
 
         df_output = pd.DataFrame(rows).reset_index(drop=True)
 
         if include_info_label:
             # If labels_structure is provided apply it; otherwise use auto_labels for a single patient
-            labels_to_use = labels_structure if labels_structure is not None else auto_labels
-            df_output = format_df_stats(df_output, column_label=column_label, labels_structure=labels_to_use)
+            labels_to_use = (
+                labels_structure if labels_structure is not None else auto_labels
+            )
+            df_output = format_df_stats(
+                df_output, column_label=column_label, labels_structure=labels_to_use
+            )
 
         return df_output
 
@@ -619,7 +592,9 @@ def bin_to_df(files: UploadedFile | list[UploadedFile]) -> DataFrame | list[Data
     elif isinstance(files, UploadedFile):
         return pd.read_csv(files)
     else:
-        raise TypeError(f"Expected UploadedFile or list[UploadedFile], got {type(files)}")
+        raise TypeError(
+            f"Expected UploadedFile or list[UploadedFile], got {type(files)}"
+        )
 
 
 def extract_true_data_from_csv(
@@ -647,16 +622,29 @@ def extract_true_data_from_csv(
             - List of dicts, one per patient (when as_dataframe=False)
     """
 
-    # Backwards compatibility: accept Spanish kwarg 'ruta_archivo_csv'
     if "ruta_archivo_csv" in kwargs and (csv_path is None or csv_path == ""):
         csv_path = kwargs.get("ruta_archivo_csv")
 
     if csv_path is None or (isinstance(csv_path, str) and csv_path == ""):
         raise ValueError("csv_path is required and cannot be empty")
 
-    data: pd.DataFrame = pd.read_csv(csv_path)
+    # Check if this is a known cloud file
+    from utils.constants.paths import GOOGLE_DRIVE_FILE_MAP
+    from utils.data_loader import load_csv_from_drive
+    
+    cloud_key = None
+    for key, local_path in GOOGLE_DRIVE_FILE_MAP.items():
+        if str(csv_path) == str(local_path):
+            cloud_key = key
+            break
+    
+    if cloud_key:
+        # Load from Google Drive
+        data = load_csv_from_drive(cloud_key)
+    else:
+        # Try local loading (for uploaded files, etc.)
+        data = pd.read_csv(csv_path)
 
-    # Reuse top-level builder if available
     def build_row_local(data_index: int):
         return build_row_from_dataframe(data, data_index)
 
@@ -739,6 +727,15 @@ def build_row_from_dataframe(data: pd.DataFrame, data_index: int) -> dict:
 
     diag_egr2_val = _safe("Diag.Egr2", 0)
 
+    # Sanitize category fields to ensure they are within valid ranges
+    insuf_val = int(_safe("InsufResp", 0))
+    if insuf_val not in RESP_INSUF:
+        insuf_val = 0
+        
+    va_val = int(_safe("VA", 0))
+    if va_val not in VENTILATION_TYPE:
+        va_val = 0
+
     return {
         "edad": int(_safe("Edad", AGE_MIN)),
         "d1": int(_safe("Diag.Ing1", 0)),
@@ -746,8 +743,8 @@ def build_row_from_dataframe(data: pd.DataFrame, data_index: int) -> dict:
         "d3": int(_safe("Diag.Ing3", 0)),
         "d4": int(_safe("Diag.Ing4", 0)),
         "apache": int(_safe("APACHE", 0)),
-        "insuf": int(_safe("InsufResp", 0)),
-        "va": int(_safe("VA", 0)),
+        "insuf": insuf_val,
+        "va": va_val,
         "estuci": int(_safe("Est. UCI", 0) * 24),
         "tiempo_vam": int(_safe("TiempoVAM", 0)),
         "estpreuci": int(_safe("Est. PreUCI", 0) * 24),
@@ -785,14 +782,15 @@ def run_experiment(
         uti_stay: Expected ICU stay.
         preuti_stay: Pre-ICU stay.
         percent: Percentage parameter used by the experiment (default=10).
+        debug: If True, prints debug information.
 
     Returns:
         DataFrame containing the simulation results with columns:
         ["Tiempo Pre VAM", "Tiempo VAM", "Tiempo Post VAM", "Estadia UCI", "Estadia Post UCI"].
     """
 
-    # Local import to avoid circular import between simuci.experiment and simuci.simulation
-    from simuci.experiment import Experiment, multiple_replication
+    from simuci import Experiment, multiple_replication
+    from utils.data_loader import get_centroids_path
 
     e = Experiment(
         age=age,
@@ -814,7 +812,9 @@ def run_experiment(
         print(
             f"run_experiment: running experiment with percent={percent}, age={age}, d1={d1}, d2={d2}, d3={d3}, d4={d4}"
         )
-    res = multiple_replication(e, n_runs, centroids_path=DFCENTROIDES_CSV_PATH)
+    # Use dynamically downloaded/fetched centroids file
+    centroids_temp_path = get_centroids_path()
+    res = multiple_replication(e, n_runs, centroids_path=centroids_temp_path)
 
     # Ensure all columns are numeric
     for col in res.columns:
@@ -831,6 +831,16 @@ def run_experiment(
 
     # Ensure the index is sequential
     res = res.reset_index(drop=True)
+
+    # Rename columns to Spanish labels as expected by the rest of the code
+    column_mapping = {
+        'pre_vam': 'Tiempo Pre VAM',
+        'vam': 'Tiempo VAM',
+        'post_vam': 'Tiempo Post VAM',
+        'uci': 'Estadia UCI',
+        'post_uci': 'Estadia Post UCI'
+    }
+    res = res.rename(columns=column_mapping)
 
     return res
 
@@ -885,7 +895,9 @@ def build_df_test_result(statistic: float, p_value: float) -> DataFrame:
     return df
 
 
-def simulate_true_data(csv_path: str | None, selection: int | None, **kwargs) -> DataFrame | list[DataFrame]:
+def simulate_true_data(
+    csv_path: str | None, selection: int | None, **kwargs
+) -> DataFrame | list[DataFrame]:
     """
     Run simulations using real patient data from a CSV file.
 
@@ -915,41 +927,66 @@ def simulate_true_data(csv_path: str | None, selection: int | None, **kwargs) ->
         # Allow callers to pass the legacy 'corridas_simulacion' kwarg to control runs
         n_runs = kwargs.get("corridas_simulacion", SIM_RUNS_DEFAULT)
 
+        # Sanitize / Clamp input data to avoid simulation crashes
+        
+        # Age
+        age_val = max(AGE_MIN, min(int(t[0]), AGE_MAX))
+
+        # Apache
+        apache_val = max(APACHE_MIN, min(int(t[5]), APACHE_MAX))
+
+        # respiratory_insufficiency must be within 0-5
+        r_insuf = int(t[6])
+        if r_insuf not in RESP_INSUF:
+            # Map invalid values to 5 (other extrapulmonary) or 0 (empty)
+            if r_insuf > 5:
+                r_insuf = 5
+            else:
+                r_insuf = 0
+
+        # Clamp time/duration values to valid limits
+        uti_stay_val = min(int(t[8]), UTI_STAY_MAX)
+        preuti_stay_val = min(int(t[10]), PREUTI_STAY_MAX)
+        vam_time_val = max(VAM_T_MIN, min(int(t[9]), VAM_T_MAX))
+        
         e = run_experiment(
             n_runs,
-            age=int(t[0]),
+            age=age_val,
             d1=int(t[1]),
             d2=int(t[2]),
             d3=int(t[3]),
             d4=int(t[4]),
-            apache=int(t[5]),
-            resp_insuf=int(t[6]),
+            apache=apache_val,
+            resp_insuf=r_insuf,
             artif_vent=int(t[7]),
-            vam_time=int(t[9]),
-            uti_stay=int(t[8]),
-            preuti_stay=int(t[10]),
+            vam_time=vam_time_val,
+            uti_stay=uti_stay_val,
+            preuti_stay=preuti_stay_val,
             percent=random.randint(0, 10),
         )
 
         return e
 
     if selection != -1:
-        t: tuple = extract_true_data_from_csv(csv_path, index=selection, return_type="tuple")  # type: ignore
+        t: tuple = extract_true_data_from_csv(
+            csv_path, index=selection, return_type="tuple"
+        )  # type: ignore
 
         # Return a DataFrame with the simulation results
         return experiment_helper(t)
     elif selection == -1:
         if csv_path is None:
             raise ValueError("csv_path is required when selection is -1")
-        datalen = pd.read_csv(csv_path).shape[0]
 
-        # Return a list of DataFrames (one per patient)
-        return [
-            experiment_helper(extract_true_data_from_csv(csv_path, index=i, return_type="tuple"))  # type: ignore[arg-type]
-            for i in range(datalen)
-        ]
+        # Extract all tuples at once to avoid re-reading the CSV for every patient
+        all_patients = cast(List[Tuple], extract_true_data_from_csv(
+            csv_path, index=None, return_type="tuple"
+        ))
+        return [experiment_helper(t) for t in all_patients]
     else:
-        raise ValueError("The parameter df_selection must be -1 or a non-negative integer.")
+        raise ValueError(
+            "The parameter df_selection must be -1 or a non-negative integer."
+        )
 
 
 def fix_seed(seed: int | None = None):
@@ -1005,8 +1042,13 @@ def predict(df: DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """
 
     try:
-        # 8/26/2025 - model trained with sklearn 1.6.1
-        model = joblib.load(PREDICTION_MODEL_PATH)
+        # Try to load model from Google Drive if local file doesn't exist
+        if not PREDICTION_MODEL_PATH.exists():
+            from utils.data_loader import load_model_from_drive
+            model = load_model_from_drive("prediction_model")
+        else:
+            # 8/26/2025 - model trained with sklearn 1.6.1
+            model = joblib.load(PREDICTION_MODEL_PATH)
 
         preds = model.predict(df)
         preds_proba = model.predict_proba(df)
@@ -1047,7 +1089,9 @@ def get_data_for_prediction(data: dict[str, int] | pd.DataFrame) -> pd.DataFrame
                 "APACHE",
             ]
             if not all(col in data.columns for col in required_cols):
-                raise ValueError(f"DataFrame must contain the following columns: {', '.join(f'{required_cols}')}")
+                raise ValueError(
+                    f"DataFrame must contain the following columns: {', '.join(f'{required_cols}')}"
+                )
             return data[required_cols]
 
         elif isinstance(data, dict):
@@ -1074,7 +1118,9 @@ def get_data_for_prediction(data: dict[str, int] | pd.DataFrame) -> pd.DataFrame
         raise
 
 
-def simulate_and_predict_patient(csv_path: str | None, selection: int | None, **kwargs) -> tuple[DataFrame, dict]:
+def simulate_and_predict_patient(
+    csv_path: str | None, selection: int | None, **kwargs
+) -> tuple[DataFrame, dict]:
     """
     Run simulation and prediction for a specific patient identified by row index in a CSV.
 
@@ -1095,7 +1141,9 @@ def simulate_and_predict_patient(csv_path: str | None, selection: int | None, **
         selection = kwargs.get("df_selection")
 
     # Extract patient data tuple
-    patient_tuple = extract_true_data_from_csv(csv_path, index=selection, return_type="tuple")
+    patient_tuple = extract_true_data_from_csv(
+        csv_path, index=selection, return_type="tuple"
+    )
 
     # Ensure we have a valid tuple
     if not isinstance(patient_tuple, tuple):
@@ -1162,7 +1210,9 @@ def prepare_patient_data_for_prediction(patient_tuple) -> dict:
         # If it's a single-row DataFrame, convert to Series first
         if isinstance(patient_tuple, _pd.DataFrame):
             if patient_tuple.shape[0] == 0:
-                raise ValueError("Empty DataFrame provided to prepare_patient_data_for_prediction")
+                raise ValueError(
+                    "Empty DataFrame provided to prepare_patient_data_for_prediction"
+                )
             patient_tuple = patient_tuple.iloc[0]
 
         # If it's a pandas Series, convert to dict for key-based access
@@ -1175,11 +1225,29 @@ def prepare_patient_data_for_prediction(patient_tuple) -> dict:
 
         if mapping is not None:
             # Prefer lower-case canonical keys, but accept various naming conventions
-            edad = int(mapping.get("edad", mapping.get("Edad", mapping.get("Edad ", AGE_MIN))))
-            diag_ing1 = int(mapping.get("d1", mapping.get("Diag.Ing1", mapping.get("Diag.Ing 1", 0))))
-            diag_ing2 = int(mapping.get("d2", mapping.get("Diag.Ing2", mapping.get("Diag.Ing 2", 0))))
-            diag_egr2 = int(mapping.get("diag_egr2", mapping.get("Diag.Egr2", mapping.get("Diag.Egr2 ", 0))))
-            tiempo_vam = int(mapping.get("tiempo_vam", mapping.get("TiempoVAM", mapping.get("TiempoVAM ", 0))))
+            edad = int(
+                mapping.get("edad", mapping.get("Edad", mapping.get("Edad ", AGE_MIN)))
+            )
+            diag_ing1 = int(
+                mapping.get(
+                    "d1", mapping.get("Diag.Ing1", mapping.get("Diag.Ing 1", 0))
+                )
+            )
+            diag_ing2 = int(
+                mapping.get(
+                    "d2", mapping.get("Diag.Ing2", mapping.get("Diag.Ing 2", 0))
+                )
+            )
+            diag_egr2 = int(
+                mapping.get(
+                    "diag_egr2", mapping.get("Diag.Egr2", mapping.get("Diag.Egr2 ", 0))
+                )
+            )
+            tiempo_vam = int(
+                mapping.get(
+                    "tiempo_vam", mapping.get("TiempoVAM", mapping.get("TiempoVAM ", 0))
+                )
+            )
             apache = int(mapping.get("apache", mapping.get("APACHE", 0)))
         else:
             # Treat as sequence (tuple/list/numpy array)
@@ -1202,7 +1270,9 @@ def prepare_patient_data_for_prediction(patient_tuple) -> dict:
     except Exception as e:
         # Log detailed error for easier debugging in the UI
         tb = "".join(traceback.format_exception(*sys.exc_info()))
-        print(f"prepare_patient_data_for_prediction: unexpected input type={type(patient_tuple)}; error={e}\n{tb}")
+        print(
+            f"prepare_patient_data_for_prediction: unexpected input type={type(patient_tuple)}; error={e}\n{tb}"
+        )
         return {
             "Edad": AGE_MIN,
             "Diag.Ing1": 0,
@@ -1211,8 +1281,6 @@ def prepare_patient_data_for_prediction(patient_tuple) -> dict:
             "TiempoVAM": 0,
             "APACHE": 0,
         }
-
-
 
 
 def simulate_all_true_data(
@@ -1237,29 +1305,25 @@ def simulate_all_true_data(
 
     # Prefer to use the extractor which already maps CSV rows to the expected dict structure
     if true_data is None:
-        records_data = extract_true_data_from_csv(csv_path=FICHERODEDATOS_CSV_PATH, index=None, as_dataframe=False)
+        records_data = extract_true_data_from_csv(
+            csv_path=FICHERODEDATOS_CSV_PATH, index=None, as_dataframe=False
+        )
         records: list[dict] = records_data if isinstance(records_data, list) else []
     elif isinstance(true_data, pd.DataFrame):
-        # Two possible kinds of DataFrame can be passed:
-        # 1) A patient-input DataFrame (columns like 'Edad', 'Diag.Ing1', 'APACHE', ...)
-        # 2) A "true results" DataFrame produced by get_true_data_for_validation
-        #    (columns == EXP_VARS: e.g. 'Tiempo Pre VAM', 'Tiempo VAM', ...).
         df_tmp = true_data.reset_index(drop=True)
         # If the provided DataFrame looks like the experiment "true results", map back to
-        # the canonical CSV rows so we can build patient input records.
+        # the canonical CSV rows.
         try:
             exp_vars_set = set(EXP_VARS)
         except Exception:
             exp_vars_set = set()
 
         if set(df_tmp.columns) == exp_vars_set:
-            # The caller passed the post-processed true-data (pre/post VAM etc.).
-            # Map back to the original CSV (same row order) and use those rows to build records.
             try:
-                print(
-                    "simulate_all_true_data: detected experiment-result DataFrame; mapping back to original CSV inputs"
-                )
-                orig = pd.read_csv(FICHERODEDATOS_CSV_PATH)
+                from utils.data_loader import load_csv_from_drive
+
+                orig = load_csv_from_drive("fichero_datos")
+
                 orig = orig.reset_index(drop=True).head(len(df_tmp))
                 records = []
                 for i in range(len(orig)):
@@ -1268,7 +1332,9 @@ def simulate_all_true_data(
                     except Exception:
                         continue
             except Exception as e:
-                print(f"simulate_all_true_data: failed to map back to original CSV: {e}")
+                print(
+                    f"simulate_all_true_data: failed to map back to original CSV: {e}"
+                )
                 records = []
         else:
             # Assume the DataFrame contains patient-level input columns and build records from it.
@@ -1432,7 +1498,9 @@ def simulate_all_true_data(
 
 
 def get_true_data_for_validation(seed: int | None = None) -> pd.DataFrame:
-    df = pd.read_csv(FICHERODEDATOS_CSV_PATH)
+    from utils.data_loader import load_csv_from_drive
+
+    df = load_csv_from_drive("fichero_datos")
 
     # Building the dataframe column by column
     # TiempoVAM está en horas; Est. UCI y (probablemente) Est. PostUCI vienen en días → convertir a horas
@@ -1459,10 +1527,6 @@ def get_true_data_for_validation(seed: int | None = None) -> pd.DataFrame:
     # Sample a percent per patient in [0,10] (inclusive). Use high=11 for compatibility.
     percent_arr = rng.integers(low=0, high=11, size=len(df))
 
-    print(
-        f">>>>> Percentage per-patient sample (first 10): {percent_arr[:10].tolist()} (seed={'fixed' if seed is not None else 'random'})"
-    )
-
     pre_vam: list[int] = []
     post_vam: list[int] = []
 
@@ -1476,14 +1540,6 @@ def get_true_data_for_validation(seed: int | None = None) -> pd.DataFrame:
         # Use rounding to avoid systematic truncation to zero for small diffs
         pre = int(round(diff * (p / 100.0)))
         post = diff - pre
-
-        if pos < 5:
-            print(f"******* Calculation for {pos}")
-            print(f"u: {u}")
-            print(f"t: {t}")
-            print(f"percent: {p}")
-            print(f"pre: {pre}")
-            print(f"post: {post}")
 
         pre_vam.append(pre)
         post_vam.append(post)

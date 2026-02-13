@@ -23,6 +23,7 @@ try:
         "fichero_datos": FICHERODEDATOS_CSV_PATH,
         "df_centroides": DFCENTROIDES_CSV_PATH,
         "data_with_pred_and_prob": PREDICTIONS_CSV_PATH,
+        "prediction_model": PREDICTION_MODEL_PATH,
     }
 except Exception as experimento:
     print(f"Error loading database files. Exception: {experimento}")

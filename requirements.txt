@@ -24,10 +24,6 @@ scikit-learn==1.6.1
 imbalanced-learn==0.14.0
 scipy==1.16.1
 simpy==4.1.1
-simuci==1.0.1
-google-api-python-client==2.164.0
-google-auth==2.38.0
-google-auth-httplib2==0.2.0
 streamlit==1.48.1
 tenacity==9.1.2
 threadpoolctl==3.6.0

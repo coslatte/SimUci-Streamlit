@@ -7,7 +7,7 @@ import streamlit as st
 from pandas import DataFrame
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-from simuci.stats import Friedman, SimulationMetrics, Wilcoxon
+from simuci import Friedman, SimulationMetrics, Wilcoxon
 
 from utils.constants.limits import (
     AGE_MIN,
@@ -46,7 +46,6 @@ from utils.constants.messages import (
     HELP_MSG_VAM_TIME,
     LABEL_TIME_FORMAT,
     LABEL_PREDICTION_METRIC,
-    ERROR_MSG_DATA_FILES_MISSING,
 )
 from utils.constants.mappings import (
     VENTILATION_TYPE,
@@ -69,7 +68,6 @@ from utils.helpers import (
     bin_to_df,
     build_df_for_stats,
     build_df_test_result,
-    ensure_drive_data_files,
     extract_true_data_from_csv,
     fix_seed,
     format_time_columns,
@@ -86,21 +84,17 @@ from utils.helpers import (
 )
 from utils.validation_ui import render_validation
 from utils.visuals import fig_to_bytes, make_all_plots
+from utils.data_loader import load_csv_from_drive
 
 # INITIAL PAGE CONFIGURATION
 st.set_page_config(
     page_title="SimUci", page_icon="🏥", layout="wide", initial_sidebar_state="expanded"
 )
 
-missing_drive_files = ensure_drive_data_files()
-if missing_drive_files:
-    missing_list = ", ".join(missing_drive_files)
-    st.error(ERROR_MSG_DATA_FILES_MISSING.format(missing_files=missing_list))
-    st.stop()
-
 # SESSION STATE INITIALIZATION
 if "global_sim_seed" not in st.session_state:
     st.session_state.global_sim_seed = 0
+
 
 with st.sidebar:
     #
@@ -150,9 +144,6 @@ if "df_sim_real_data" not in st.session_state:
 if "df_sim_all_true_data" not in st.session_state:
     st.session_state.df_sim_all_true_data = pd.DataFrame()
 
-# if "df_individual_patients" not in st.session_state:
-#     st.session_state.df_individual_patients = pd.DataFrame()
-
 if "wilcoxon_test_result" not in st.session_state:
     st.session_state.wilcoxon_test_result = {}
 if "friedman_test_result" not in st.session_state:
@@ -180,7 +171,7 @@ with simulation_tab:
         st.header("Paciente")
     with pac_col2:
         col1, col2 = st.columns(
-            spec=[1, 2] , gap="small", border=False, vertical_alignment="bottom"
+            spec=[1, 2], gap="small", border=False, vertical_alignment="bottom"
         )
         with col1:
             nuevo_paciente = st.button("Nuevo paciente", use_container_width=True)
@@ -193,7 +184,7 @@ with simulation_tab:
                 max_chars=10,
                 placeholder="ID Paciente",
                 label_visibility="visible",
-                help=HELP_MSG_ID_PACIENTE
+                help=HELP_MSG_ID_PACIENTE,
             )
 
     # PATIENT DATA INPUTS
@@ -279,7 +270,6 @@ with simulation_tab:
                     key="diag-ing-4",
                 )
             with row2[4]:
-                # Additional selectboxes
                 resp_insuf_option: str = st.selectbox(
                     label="Insuficiencia Respiratoria",
                     options=tuple(RESP_INSUF.values()),
@@ -350,6 +340,19 @@ with simulation_tab:
 
     # Display the DataFrame with the simulation result for this patient.
     if not st.session_state.df_result.empty:
+        # Check and fix legacy English columns from previous session runs
+        legacy_cols = {
+            "pre_vam": "Tiempo Pre VAM",
+            "vam": "Tiempo VAM",
+            "post_vam": "Tiempo Post VAM",
+            "uci": "Estadia UCI",
+            "post_uci": "Estadia Post UCI",
+        }
+        if set(legacy_cols.keys()).intersection(st.session_state.df_result.columns):
+            st.session_state.df_result = st.session_state.df_result.rename(
+                columns=legacy_cols
+            )
+
         toggle_format = st.toggle(
             label=LABEL_TIME_FORMAT,
             value=False,
@@ -568,7 +571,8 @@ with real_data_tab:
         tabs=("Datos Reales", "Métricas"), width="stretch"
     )
 
-    df_true_data = pd.read_csv(FICHERODEDATOS_CSV_PATH)
+    df_true_data = load_csv_from_drive("fichero_datos")
+    df_true_data.index = pd.Index(range(1, len(df_true_data) + 1))
     df_true_data.index.name = "Paciente"
 
     with one_patient_data_validation_tab:
@@ -623,14 +627,15 @@ with real_data_tab:
             if (st.session_state.prev_selection != current_selection) or rerun_sim_btn:
                 # Run simulation for the selected row
                 data = simulate_true_data(
-                    csv_path=str(FICHERODEDATOS_CSV_PATH), selection=current_selection
+                    csv_path=str(FICHERODEDATOS_CSV_PATH),
+                    selection=current_selection - 1,
                 )
 
                 # Prepare patient data for prediction
                 st.session_state.patient_data = prepare_patient_data_for_prediction(
                     extract_true_data_from_csv(
                         csv_path=str(FICHERODEDATOS_CSV_PATH),
-                        index=current_selection,
+                        index=current_selection - 1,
                         as_dataframe=False,
                     )
                 )
@@ -1027,16 +1032,6 @@ with comparisons_tab:
                             f"No se puede realizar el test de Friedman: se necesitan al menos 3 experimentos válidos, pero solo se encontraron {len(samples_selection)}. "
                             "Verifica que los archivos CSV tengan la columna seleccionada y no estén vacíos."
                         )
-                        # Opcional: Debug para inspeccionar qué se cargó
-                        st.warning(
-                            f"Debug: Número de archivos subidos: {len(experiments_file_upl)}"
-                        )
-                        st.warning(
-                            f"Debug: Número de DataFrames procesados: {len(experiment_dataframes)}"
-                        )
-                        st.warning(
-                            f"Debug: Columnas en cada DataFrame: {[df.columns.tolist() if not df.empty else 'Vacío' for df in experiment_dataframes]}"
-                        )
                     else:
                         if min_sample_size != -1:
                             st.info(
@@ -1066,7 +1061,6 @@ with comparisons_tab:
                         except Exception as data:
                             st.exception(data)
     with info_tab:
-
         tab_es, tab_en = st.tabs(["Español", "English"])
 
         with tab_es:

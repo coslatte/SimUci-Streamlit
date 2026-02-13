@@ -9,15 +9,12 @@ Setup
 1. Create (or reuse) a Google Cloud project at https://console.cloud.google.com
 2. Enable the **Google Drive API** for that project.
 3. Create a **Service Account** → download the JSON key file.
-4. Share the target Google Drive folder with the service account e-mail
-   (e.g. ``simuci-data@your-project.iam.gserviceaccount.com``) as **Viewer**.
-5. Copy the JSON key contents into ``.streamlit/secrets.toml`` under the
-   ``[google_drive.service_account]`` section (see ``secrets.toml.example``).
+4. Share the target Google Drive folder with the service account e-mail (e.g. ``simuci-data@your-project.iam.gserviceaccount.com``) as **Viewer**.
+5. Copy the JSON key contents into ``.streamlit/secrets.toml`` under the ``[google_drive.service_account]`` section (see ``secrets.toml.example``).
 
 Security notes
 --------------
-* The service account is a *separate identity* — it has **zero access** to any
-  file that has not been explicitly shared with it.
+* The service account is a *separate identity* — it has **zero access** to any file that has not been explicitly shared with it.
 * Credentials live in Streamlit secrets (never committed to the repo).
 * Access can be revoked at any time by un-sharing the folder.
 """
@@ -42,8 +39,7 @@ class GoogleDriveService:
         """Initialise the service from a service-account JSON dict.
 
         Args:
-            credentials_info: The parsed contents of the service-account JSON
-                              key file (or the equivalent Streamlit secrets section).
+            credentials_info: The parsed contents of the service-account JSON key file (or the equivalent Streamlit secrets section).
         """
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
@@ -124,6 +120,40 @@ class GoogleDriveService:
         for f in files:
             if f["name"] == filename:
                 return self.download_file(f["id"], dest)
+
+        logger.warning("File %r not found in folder %s", filename, folder_id)
+        return None
+
+    def read_file(self, file_id: str) -> bytes:
+        """Download file content into memory.
+
+        Args:
+            file_id: The Google Drive file ID.
+
+        Returns:
+            The file content as bytes.
+        """
+        request = self._service.files().get_media(fileId=file_id)
+        return request.execute()
+
+    def read_file_by_name(
+        self,
+        folder_id: str,
+        filename: str,
+    ) -> bytes | None:
+        """Find *filename* inside *folder_id* and return its content.
+
+        Args:
+            folder_id: The Google Drive folder ID to search in.
+            filename: The exact file name to match.
+
+        Returns:
+            The file content as bytes, or ``None`` if not found.
+        """
+        files = self.list_files(folder_id)
+        for f in files:
+            if f["name"] == filename:
+                return self.read_file(f["id"])
 
         logger.warning("File %r not found in folder %s", filename, folder_id)
         return None
