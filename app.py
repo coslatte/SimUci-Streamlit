@@ -9,6 +9,15 @@ from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from simuci import Friedman, SimulationMetrics, Wilcoxon
 
+# ─── Framework de Incertidumbre y Robustez (integración no invasiva) ──────
+# Trabajo de Diploma: "Implementación de un Marco de Trabajo para la
+# Evaluación de Incertidumbre y Robustez en un Modelo de Simulación
+# Clínica Predictiva" — Jorge Jesús Santos García, UCLV 2025.
+# El framework no modifica utils/ ni el motor de simulación (simuci);
+# solo añade una pestaña nueva a esta interfaz. Ver:
+# simuci_framework/README_framework.md
+from simuci_framework.framework.dashboard_integration import FrameworkDashboard
+
 from utils.constants.limits import (
     AGE_MIN,
     AGE_MAX,
@@ -132,8 +141,8 @@ with st.sidebar:
 ########
 # TABS #
 ########
-simulation_tab, real_data_tab, comparisons_tab, info_tab = st.tabs(
-    tabs=("Simulación", "Validaciones", "Comparaciones", "Información"), width="stretch"
+simulation_tab, real_data_tab, comparisons_tab, framework_tab, info_tab = st.tabs(
+    tabs=("Simulación", "Validaciones", "Comparaciones", "Incertidumbre y Robustez", "Información"), width="stretch"
 )
 
 # DataFrame storing simulation results from a single patient
@@ -1076,3 +1085,13 @@ with comparisons_tab:
                     st.markdown(f.read())
             except Exception as e:
                 st.error(f"Error loading English information: {e}")
+
+##########################################
+# INCERTIDUMBRE Y ROBUSTEZ (framework)   #
+##########################################
+with framework_tab:
+    # Panel completo del framework: perfil del paciente, cuantificación de
+    # incertidumbre (conformal / bootstrap / Monte Carlo), stress-tests de
+    # robustez con semáforo de confianza clínica, y dashboard ejecutivo con
+    # curva de supervivencia y recomendaciones. Ver simuci_framework/README_framework.md
+    FrameworkDashboard().render()
